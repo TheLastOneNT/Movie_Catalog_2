@@ -89,7 +89,7 @@ header nav ul li a {
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
     width: 200px; /* Adjusted width */
-    height: 280px; /* Adjusted height */
+    height: 260px; /* Adjusted height */
 }
 
 .gallery-item:hover {
