@@ -6,7 +6,7 @@ body, html {
     color: #000;
     height: 100%;
     background: none;
-    overflow: hidden; /* Отключаем прокрутку */
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -43,56 +43,52 @@ header {
 }
 
 header .logo {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     text-align: center;
 }
 
-.category-section {
+.main-content {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: space-between;
-    width: 85%; /* Ширина секции 85% от ширины экрана */
-    margin: 0 auto;
-    flex-grow: 1; /* Занимает всё доступное пространство */
-    padding: 10px 0;
-}
-
-.category {
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    text-align: center;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 8px;
-    transition: transform 0.3s ease-in-out;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    width: 100%; /* Иконки занимают 100% ширины родительского контейнера */
-    height: calc((100% - 40px) / 3); /* Высота каждой иконки, учитывая отступы */
+    height: 80%; /* Высота секции контента 80% от высоты экрана */
+    padding: 20px;
+}
+
+.poster-container {
+    position: relative;
     box-sizing: border-box;
-    margin-bottom: 20px; /* Отступ между иконками */
+    overflow: hidden;
+    border-radius: 8px;
 }
 
-.category:last-child {
-    margin-bottom: 0; /* Убираем отступ у последней иконки */
+.poster-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
 }
 
-.category img {
-    width: auto;
-    height: 60px;
-    object-fit: contain; /* Сохраняем пропорции изображения */
-    margin-bottom: 10px;
-}
-
-.category h3 {
-    font-size: 18px;
+.poster-container h3 {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-size: 24px;
     margin: 0;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Добавляем тень для лучшей читаемости */
 }
 
-.category:hover {
-    transform: scale(1.05);
+.vertical-poster {
+    width: 30%;
+    height: 100%;
+}
+
+.horizontal-poster {
+    width: 65%;
+    height: 48%;
+    margin-bottom: 20px;
 }
 
 footer {

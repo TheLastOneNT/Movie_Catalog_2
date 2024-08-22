@@ -18,28 +18,28 @@
         <div class="logo">Movie Catalog</div>
     </header>
 
-    <main>
-        <!-- Стартовая секция с категориями -->
-        <section class="category-section" id="categorySection">
-            <div class="category" id="moviesCategory">
-                <img src="Types/Movies.jpg" alt="Movies">
-                <h3>Фильмы</h3>
-            </div>
-            <div class="category" id="seriesCategory">
-                <img src="Types/Series.jpg" alt="Series">
+    <div class="main-content">
+        <!-- Вертикальный постер для фильмов -->
+        <div class="poster-container vertical-poster">
+            <img src="path_to_your_images/film-poster.jpg" alt="Фильмы">
+            <h3>Фильмы</h3>
+        </div>
+        <div class="right-posters">
+            <!-- Первый горизонтальный постер для сериалов -->
+            <div class="poster-container horizontal-poster">
+                <img src="path_to_your_images/series-poster.jpg" alt="Сериалы">
                 <h3>Сериалы</h3>
             </div>
-            <div class="category" id="cartoonsCategory">
-                <img src="Types/Cartoons.jpg" alt="Cartoons">
+            <!-- Второй горизонтальный постер для мультфильмов -->
+            <div class="poster-container horizontal-poster">
+                <img src="path_to_your_images/cartoons-poster.jpg" alt="Мультфильмы">
                 <h3>Мультфильмы</h3>
             </div>
-        </section>
-    </main>
+        </div>
+    </div>
 
     <footer>
         <p>&copy; 2024 Movie Catalog</p>
     </footer>
-
-    <script src="script.js"></script>
 </body>
 </html>
