@@ -3,13 +3,24 @@ function showMovies(category) {
     window.location.href = "movies.html";
 }
 
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
 function displayMovies() {
     const selectedCategory = localStorage.getItem('selectedCategory');
     if (selectedCategory) {
         const movieGallery = document.getElementById('movieGallery');
         movieGallery.innerHTML = ''; // Очистка галереи
 
-        movieList[selectedCategory].forEach(movie => {
+        // Перемешиваем массив фильмов перед отображением
+        const shuffledMovies = shuffleArray([...movieList[selectedCategory]]);
+
+        shuffledMovies.forEach(movie => {
             const movieItem = document.createElement('div');
             movieItem.className = 'gallery-item';
             movieItem.innerHTML = `
