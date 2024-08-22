@@ -59,7 +59,7 @@ header .logo {
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Увеличиваем ширину контейнеров */
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Ширина контейнеров */
     gap: 15px; /* Отступы между элементами */
     justify-items: center;
 }
@@ -73,13 +73,13 @@ header .logo {
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
     width: 160px; /* Ширина контейнера для мобильных устройств */
-    height: auto; /* Автоматическая высота для сохранения пропорций */
+    height: 260px; /* Фиксированная высота контейнера */
 }
 
 .gallery-item img {
     width: 100%;
-    height: auto; /* Автоматическая высота изображения для сохранения соотношения сторон */
-    object-fit: cover;
+    height: 100%; /* Устанавливаем высоту изображения равной высоте контейнера */
+    object-fit: cover; /* Сохранение пропорций изображения и заполнение контейнера */
     border-radius: 4px;
 }
 
@@ -106,5 +106,6 @@ footer {
 
     .gallery-item {
         width: 160px; /* Ширина контейнера для мобильных устройств */
+        height: 260px; /* Фиксированная высота контейнера для мобильных устройств */
     }
 }
