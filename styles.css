@@ -1,3 +1,4 @@
+/* Общее */
 body, html {
     margin: 0;
     padding: 0;
@@ -32,11 +33,11 @@ body, html {
 
 header {
     color: white;
-    padding: 10px 20px; /* Уменьшили отступ сверху и снизу */
+    padding: 15px 20px;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 80px; /* Уменьшили высоту заголовка */
+    height: 100px;
 }
 
 header .logo {
@@ -47,7 +48,8 @@ header .logo {
 }
 
 .movies-section {
-    padding-top: 10px; /* Уменьшили отступ сверху */
+    padding: 20px;
+    background: none;
 }
 
 .movies-section h2 {
@@ -57,8 +59,8 @@ header .logo {
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Возвращаем исходную ширину контейнеров */
-    gap: 20px; /* Увеличено расстояние между элементами */
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Сетка адаптируется под размеры экрана */
+    gap: 15px; /* Отступы между элементами */
     justify-items: center;
 }
 
@@ -70,17 +72,13 @@ header .logo {
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
-    width: 200px; /* Возвращаем ширину контейнеров для ПК */
-    height: 280px; /* Возвращаем высоту контейнеров для ПК */
-}
-
-.gallery-item:hover {
-    transform: scale(1.05);
+    width: 150px; /* Уменьшение ширины для мобильных устройств */
+    height: auto; /* Автоматическая высота для корректного соотношения сторон */
 }
 
 .gallery-item img {
     width: 100%;
-    height: 230px; /* Возвращаем высоту изображения для ПК */
+    height: auto; /* Автоматическая высота изображения для сохранения соотношения сторон */
     object-fit: cover;
     border-radius: 4px;
 }
@@ -101,15 +99,12 @@ footer {
 }
 
 /* Медиа-запрос для мобильных устройств */
-@media (max-width: 430px) {
+@media (max-width: 768px) {
     .gallery {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px; /* Это расстояние между постерами */
-        padding: 0 10px; /* Это отступы от краев экрана */
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* Ещё большее уменьшение для мобильных устройств */
     }
 
     .gallery-item {
-        width: calc(50% - 15px); /* Рассчитываем ширину так, чтобы постеры имели одинаковое расстояние */
-        height: 260px; /* Пропорционально уменьшаем высоту контейнера */
+        width: 120px; /* Ещё большее уменьшение для мобильных устройств */
     }
 }
