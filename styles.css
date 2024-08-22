@@ -104,7 +104,7 @@ footer {
 /* Медиа-запрос для мобильных устройств */
 @media (max-width: 768px) {
     .gallery {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Изменение для мобильных устройств */
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Изменение для мобильных устройств */
     }
 
     .gallery-item {
