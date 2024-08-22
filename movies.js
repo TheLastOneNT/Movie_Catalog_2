@@ -31,7 +31,6 @@ const movieList = {
             { id: 36, name: "Гладиатор", image: "./Movie images/36.webp" },
             { id: 37, name: "Отступники", image: "./Movie images/37.jpg" },
             { id: 38, name: "1 + 1", image: "./Movie images/38.jpg" },
-            { id: 39, name: "Схватка", image: "./Movie images/38.jpg" },
             { id: 40, name: "Шоу Трумана", image: "./Movie images/39.jpg" },
             { id: 41, name: "12 лет рабства", image: "./Movie images/40.jpg" },
             { id: 42, name: "По соображениям совести", image: "./Movie images/41.jpg" },
