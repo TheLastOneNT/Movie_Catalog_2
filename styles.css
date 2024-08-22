@@ -72,7 +72,7 @@ header .logo {
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
     width: 200px; /* Возвращаем ширину контейнеров для ПК */
-    height: 260px; /* Возвращаем высоту контейнеров для ПК */
+    height: 280px; /* Возвращаем высоту контейнеров для ПК */
 }
 
 .gallery-item:hover {
