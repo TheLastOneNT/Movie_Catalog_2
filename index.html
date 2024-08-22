@@ -15,31 +15,37 @@
         </video>
     </div>
     <header>
-        <div class="logo">Movie Catalog</div>
+        <div class="logo" id="homeLink">Movie Catalog</div>
     </header>
 
-    <div class="main-content">
+    <div class="main-content" id="categorySection">
         <!-- Постеры -->
-        <div class="poster-container poster-vertical">
+        <div class="poster-container poster-vertical" id="moviesCategory">
             <img src="Types/Movies.jpg" alt="Movies">
             <h3>Фильмы</h3>
         </div>
-        <div class="poster-container poster-vertical">
+        <div class="poster-container poster-vertical" id="documentariesCategory">
             <img src="Types/Documentary.jpg" alt="Документалки">
             <h3>Документалки</h3>
         </div>
-        <div class="poster-container poster-vertical">
+        <div class="poster-container poster-vertical" id="seriesCategory">
             <img src="Types/Series.jpg" alt="Series">
             <h3>Сериалы</h3>
         </div>
-        <div class="poster-container poster-vertical">
+        <div class="poster-container poster-vertical" id="cartoonsCategory">
             <img src="Types/Cartoons.jpg" alt="Cartoons">
             <h3>Мультфильмы</h3>
         </div>
     </div>
 
+    <div class="movies-section" id="moviesSection" style="display: none;">
+        <div class="gallery" id="movieGallery"></div>
+    </div>
+
     <footer>
         <p>&copy; 2024 Movie Catalog</p>
     </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>

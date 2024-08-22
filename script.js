@@ -1,83 +1,55 @@
 const movieList = {
     movies: [
-        { id: 7, name: "Законопослушный гражданин", image: "./Movie images/7.webp" },
-        { id: 8, name: "Дом", image: "./Movie images/8.jpg" },
-        { id: 9, name: "Голодные игры", image: "./Movie images/9.jpg" },
-        { id: 10, name: "Мандарины", image: "./Movie images/10.jpg" },
-        { id: 11, name: "Отец солдата", image: "./Movie images/11.jpg" },
-        { id: 12, name: "Фокус", image: "./Movie images/12.jpg" },
-        { id: 13, name: "Однажды в Америке", image: "./Movie images/13.jpg" },
-        { id: 14, name: "Брюс Всемогущий", image: "./Movie images/14.jpg" },
-        { id: 15, name: "Зима в огне", image: "./Movie images/15.jpg" },
-        { id: 16, name: "Схватка", image: "./Movie images/16.jpg" },
-        { id: 17, name: "Адвокат дьявола", image: "./Movie images/17.jpg" },
-        { id: 18, name: "Безумно влюблённый", image: "./Movie images/18.jpg" },
-        { id: 19, name: "Лицо со шрамом", image: "./Movie images/19.jpg" },
-        { id: 20, name: "Бойцовский клуб", image: "./Movie images/20.jpg" },
-        { id: 21, name: "Крёстный Отец 1", image: "./Movie images/21.jpg" },
-        { id: 22, name: "Крёстный Отец 2", image: "./Movie images/22.jpg" },
-        { id: 23, name: "Крёстный Отец 3", image: "./Movie images/23.jpg" },
-        { id: 24, name: "Укрощение строптивого", image: "./Movie images/24.jpg" },
-        { id: 25, name: "Блеф", image: "./Movie images/25.jpg" },
-        { id: 26, name: "Нокдаун", image: "./Movie images/26.jpg" },
-        { id: 27, name: "Гладиатор", image: "./Movie images/27.jpg" },
-        { id: 28, name: "Последний самурай", image: "./Movie images/28.jpg" },
-        { id: 29, name: "Грань будущего", image: "./Movie images/29.jpg" },
-        { id: 30, name: "Обливион", image: "./Movie images/30.jpg" }
+        { id: 1, name: "Фильм 1", image: "./Movie images/1.jpg" },
+        { id: 2, name: "Фильм 2", image: "./Movie images/2.jpg" },
+        // Добавьте больше фильмов сюда...
+    ],
+    documentaries: [
+        { id: 1, name: "Документалка 1", image: "./Documentary images/1.jpg" },
+        { id: 2, name: "Документалка 2", image: "./Documentary images/2.jpg" },
+        // Добавьте больше документалок сюда...
     ],
     series: [
-        { id: 31, name: "Викинги", image: "./Series images/31.webp" },
+        { id: 1, name: "Сериал 1", image: "./Series images/1.jpg" },
+        { id: 2, name: "Сериал 2", image: "./Series images/2.jpg" },
+        // Добавьте больше сериалов сюда...
     ],
     cartoons: [
-        { id: 1, name: "Неисправимый Рон", image: "./Movie images/ron.jpg" },
-        { id: 2, name: "Как приручить дракона", image: "./Movie images/drakon1.jpg" },
-        { id: 3, name: "Как приручить дракона 2", image: "./Movie images/drakon2.webp" },
-        { id: 4, name: "Как приручить дракона 3", image: "./Movie images/drakon3.webp" },
-        { id: 5, name: "В поисках Немо", image: "./Movie images/nemo.jpg" },
-        { id: 6, name: "В поисках Дори", image: "./Movie images/dori.jpg" }
+        { id: 1, name: "Мультфильм 1", image: "./Cartoon images/1.jpg" },
+        { id: 2, name: "Мультфильм 2", image: "./Cartoon images/2.jpg" },
+        // Добавьте больше мультфильмов сюда...
     ]
 };
 
-// Функция для перемешивания массива
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
+const categorySection = document.getElementById('categorySection');
+const moviesSection = document.getElementById('moviesSection');
+const movieGallery = document.getElementById('movieGallery');
 
-// Функция для отображения галереи
-function renderGallery(category) {
-    const gallery = document.getElementById('movieGallery');
-    gallery.innerHTML = '';
+function showMovies(category) {
+    movieGallery.innerHTML = ''; // Очистка галереи
 
-    const shuffledMovies = shuffleArray(movieList[category]);
-
-    shuffledMovies.forEach(movie => {
+    movieList[category].forEach(movie => {
         const movieItem = document.createElement('div');
         movieItem.className = 'gallery-item';
         movieItem.innerHTML = `
             <img src="${movie.image}" alt="${movie.name}">
             <h3>${movie.name}</h3>
         `;
-        gallery.appendChild(movieItem);
+        movieGallery.appendChild(movieItem);
     });
 
-    document.getElementById('categorySection').style.display = 'none';
-    document.getElementById('moviesSection').style.display = 'block';
+    categorySection.style.display = 'none'; // Скрыть секцию категорий
+    moviesSection.style.display = 'block'; // Показать секцию фильмов
 }
 
-// Добавление событий на категории
-document.getElementById('moviesCategory').addEventListener('click', () => {
-    renderGallery('movies');
-});
+// Добавляем обработчики событий для категорий
+document.getElementById('moviesCategory').addEventListener('click', () => showMovies('movies'));
+document.getElementById('documentariesCategory').addEventListener('click', () => showMovies('documentaries'));
+document.getElementById('seriesCategory').addEventListener('click', () => showMovies('series'));
+document.getElementById('cartoonsCategory').addEventListener('click', () => showMovies('cartoons'));
 
-document.getElementById('seriesCategory').addEventListener('click', () => {
-    renderGallery('series');
+// Возврат на главную страницу при клике на хедер
+document.getElementById('homeLink').addEventListener('click', () => {
+    categorySection.style.display = 'flex';
+    moviesSection.style.display = 'none';
 });
-
-document.getElementById('cartoonsCategory').addEventListener('click', () => {
-    renderGallery('cartoons');
-});
-
