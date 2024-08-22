@@ -7,6 +7,8 @@ body, html {
     height: 100%;
     background: none;
     overflow: hidden; /* Отключаем прокрутку */
+    display: flex;
+    flex-direction: column;
 }
 
 .video-container {
@@ -37,7 +39,7 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 15%; /* Высота хедера равна 15% от высоты окна */
+    flex: 0 0 10%; /* Высота хедера равна 10% от высоты окна */
 }
 
 header .logo {
@@ -51,8 +53,7 @@ header .logo {
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    height: 70%; /* Основная часть высоты */
-    padding: 10px 0;
+    flex: 1; /* Основная часть высоты */
     width: 80%; /* Ширина секции 80% от ширины экрана */
     margin: 0 auto;
 }
@@ -71,19 +72,15 @@ header .logo {
     height: calc((100% - 40px) / 3); /* Высота иконок с учетом отступов */
 }
 
-.category + .category {
-    margin-top: 20px; /* Отступ между иконками */
-}
-
 .category img {
-    width: 40px;
-    height: 40px;
+    width: 50px;
+    height: 50px;
     object-fit: cover;
-    margin-bottom: 5px;
+    margin-bottom: 10px;
 }
 
 .category h3 {
-    font-size: 14px;
+    font-size: 18px;
     margin: 0;
 }
 
@@ -95,7 +92,7 @@ footer {
     color: white;
     text-align: center;
     padding: 10px;
-    height: 15%; /* Высота футера равна 15% от высоты окна */
+    flex: 0 0 10%; /* Высота футера равна 10% от высоты окна */
     display: flex;
     justify-content: center;
     align-items: center;
