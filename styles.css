@@ -42,6 +42,8 @@ header {
 header .logo {
     font-size: 24px;
     font-weight: bold;
+    text-align: center;
+    margin: 0 auto;
 }
 
 header nav ul {
