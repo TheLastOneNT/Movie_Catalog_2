@@ -54,8 +54,9 @@ header .logo {
     align-items: center;
     justify-content: space-between;
     flex: 1; /* Основная часть высоты */
-    width: 80%; /* Ширина секции 80% от ширины экрана */
+    width: 85%; /* Ширина секции 85% от ширины экрана */
     margin: 0 auto;
+    height: 90%; /* Секция занимает 90% высоты экрана */
 }
 
 .category {
@@ -69,7 +70,7 @@ header .logo {
     transition: transform 0.3s ease-in-out;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     width: 100%; /* Иконки занимают 100% ширины родительского контейнера */
-    height: calc((100% - 40px) / 3); /* Высота иконок с учетом отступов */
+    height: calc((90% - 40px) / 3); /* Высота каждой иконки, с учетом отступов */
 }
 
 .category img {
