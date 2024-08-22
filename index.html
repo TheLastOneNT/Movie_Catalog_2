@@ -15,24 +15,24 @@
         </video>
     </div>
     <header>
-        <div class="logo">Movie Catalog</div>
+        <div class="logo" id="homeLink">Movie Catalog</div>
     </header>
 
     <div class="main-content" id="categorySection">
         <!-- Постеры категорий -->
-        <div class="poster-container poster-vertical" id="moviesCategory" onclick="navigateTo('movies')">
+        <div class="poster-container poster-vertical" id="moviesCategory" onclick="showMovies('movies')">
             <img src="Types/Movies.jpg" alt="Movies">
             <h3>Фильмы</h3>
         </div>
-        <div class="poster-container poster-vertical" id="documentariesCategory" onclick="navigateTo('documentaries')">
-            <img src="Types/Documentary.jpg" alt="Документалки">
+        <div class="poster-container poster-vertical" id="documentariesCategory" onclick="showMovies('documentaries')">
+            <img src="Types/Documentary.jpg" alt="Documentaries">
             <h3>Документалки</h3>
         </div>
-        <div class="poster-container poster-vertical" id="seriesCategory" onclick="navigateTo('series')">
+        <div class="poster-container poster-vertical" id="seriesCategory" onclick="showMovies('series')">
             <img src="Types/Series.jpg" alt="Series">
             <h3>Сериалы</h3>
         </div>
-        <div class="poster-container poster-vertical" id="cartoonsCategory" onclick="navigateTo('cartoons')">
+        <div class="poster-container poster-vertical" id="cartoonsCategory" onclick="showMovies('cartoons')">
             <img src="Types/Cartoons.jpg" alt="Cartoons">
             <h3>Мультфильмы</h3>
         </div>

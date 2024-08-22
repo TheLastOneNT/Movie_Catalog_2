@@ -65,12 +65,6 @@ function showMovies(category) {
     movieGallery.style.gap = '15px'; // Устанавливаем отступы между постерами
 }
 
-// Добавляем обработчики событий для категорий
-document.getElementById('moviesCategory').addEventListener('click', () => showMovies('movies'));
-document.getElementById('documentariesCategory').addEventListener('click', () => showMovies('documentaries'));
-document.getElementById('seriesCategory').addEventListener('click', () => showMovies('series'));
-document.getElementById('cartoonsCategory').addEventListener('click', () => showMovies('cartoons'));
-
 // Возврат на главную страницу при клике на хедер
 document.getElementById('homeLink').addEventListener('click', () => {
     categorySection.style.display = 'flex';
