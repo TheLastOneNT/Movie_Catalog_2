@@ -58,28 +58,21 @@ header .logo {
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Возвращаем исходную ширину контейнеров */
     gap: 20px; /* Увеличено расстояние между элементами */
     justify-items: center;
 }
 
 .gallery-item {
     background-color: rgba(255, 255, 255, 0.9);
-    padding: 10px; /* Увеличен padding для лучшей видимости */
+    padding: 8px;
     border: 1px solid #ddd;
     border-radius: 4px;
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
-    width: 200px; /* Стандартная ширина для ПК */
-    height: 260px; /* Стандартная высота для ПК */
-}
-
-@media (max-width: 768px) {
-    .gallery-item {
-        width: 150px; /* Уменьшение только для мобильных устройств */
-        height: 220px; /* Пропорциональное уменьшение высоты */
-    }
+    width: 200px; /* Возвращаем ширину контейнеров для ПК */
+    height: 260px; /* Возвращаем высоту контейнеров для ПК */
 }
 
 .gallery-item:hover {
@@ -88,7 +81,7 @@ header .logo {
 
 .gallery-item img {
     width: 100%;
-    height: 230px;
+    height: 230px; /* Возвращаем высоту изображения для ПК */
     object-fit: cover;
     border-radius: 4px;
 }
@@ -106,4 +99,16 @@ footer {
     text-align: center;
     padding: 15px;
     margin-top: 20px;
+}
+
+/* Медиа-запрос для мобильных устройств */
+@media (max-width: 768px) {
+    .gallery {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Изменение для мобильных устройств */
+    }
+
+    .gallery-item {
+        width: 150px; /* Уменьшение только для мобильных устройств */
+        height: 220px; /* Пропорциональное уменьшение высоты */
+    }
 }
