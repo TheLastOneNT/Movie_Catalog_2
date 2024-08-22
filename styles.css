@@ -37,7 +37,7 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 20px;
+    height: 20px; /* Оставляем фиксированную высоту */
 }
 
 header .logo {
@@ -76,8 +76,8 @@ header .logo {
     height: 300px; /* Фиксированная высота контейнера */
     display: flex;
     flex-direction: column;
-    justify-content: flex-start; /* Начинаем выравнивание сверху */
-    align-items: center; /* Центрируем содержимое по горизонтали */
+    justify-content: center; /* Вертикальное центрирование текста и изображения */
+    align-items: center; /* Центрирование содержимого по горизонтали */
 }
 
 .gallery-item img {
@@ -85,7 +85,7 @@ header .logo {
     height: 220px; /* Высота изображения */
     object-fit: cover; /* Сохранение пропорций изображения */
     border-radius: 4px;
-    margin-bottom: 4px; /* Еще большее уменьшение расстояния между постером и текстом */
+    margin-bottom: 4px; /* Уменьшение расстояния между постером и текстом */
 }
 
 .gallery-item h3 {
@@ -99,4 +99,16 @@ header .logo {
     -webkit-line-clamp: 2; /* Ограничение количества строк двумя */
     -webkit-box-orient: vertical;
     text-align: center; /* Центрирование текста по горизонтали */
+    flex-grow: 1; /* Заполнение доступного пространства текстом */
+    display: flex;
+    align-items: center; /* Вертикальное центрирование текста */
+    justify-content: center; /* Центрирование текста по горизонтали */
+}
+
+
+footer {
+    color: white;
+    text-align: center;
+    padding: 15px;
+    margin-top: 20px;
 }
