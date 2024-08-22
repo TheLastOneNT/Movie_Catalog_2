@@ -28,7 +28,7 @@ const movieList = {
         { id: 15, name: "Зима в огне", image: "./Movie images/15.jpg" },
     ],
     series: [
-        { id: 31, name: "Викинги", image: "./Series images/31.webp" },
+        { id: 31, name: "Викинги", image: "./Movie images/31.webp" },
     ],
     cartoons: [
         { id: 1, name: "Неисправимый Рон", image: "./Movie images/ron.jpg" },
@@ -61,10 +61,10 @@ function displayMovies() {
             movieGallery.appendChild(movieItem);
         });
 
-        // Настройка сетки для показа двух постеров в ряду
+        // Устанавливаем сетку для отображения двух постеров в ряду
         movieGallery.style.display = 'grid';
-        movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
-        movieGallery.style.gap = '15px';
+        movieGallery.style.gridTemplateColumns = 'repeat(2, 1fr)'; // Задаем два постера в ряду
+        movieGallery.style.gap = '15px'; // Отступы между постерами
     }
 }
 

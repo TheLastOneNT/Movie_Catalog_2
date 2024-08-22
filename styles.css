@@ -99,7 +99,7 @@ header .logo {
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Устанавливаем сетку с минимум 2 постерами в ряд */
+    grid-template-columns: repeat(2, 1fr); /* Сетка для двух постеров в ряду */
     gap: 15px; /* Отступы между элементами */
     justify-items: center;
 }
