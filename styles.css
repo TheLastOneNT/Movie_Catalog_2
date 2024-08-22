@@ -59,7 +59,7 @@ header .logo {
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Сетка адаптируется под размеры экрана */
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Увеличиваем ширину контейнеров */
     gap: 15px; /* Отступы между элементами */
     justify-items: center;
 }
@@ -72,8 +72,8 @@ header .logo {
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
-    width: 180px; /* Возвращаем ширину контейнеров для ПК */
-    height: 220px; /* Возвращаем высоту контейнеров для ПК */
+    width: 160px; /* Ширина контейнера для мобильных устройств */
+    height: auto; /* Автоматическая высота для сохранения пропорций */
 }
 
 .gallery-item img {
@@ -101,10 +101,10 @@ footer {
 /* Медиа-запрос для мобильных устройств */
 @media (max-width: 768px) {
     .gallery {
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* Ещё большее уменьшение для мобильных устройств */
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Ширина контейнеров для мобильных устройств */
     }
 
     .gallery-item {
-        width: 120px; /* Ещё большее уменьшение для мобильных устройств */
+        width: 160px; /* Ширина контейнера для мобильных устройств */
     }
 }
