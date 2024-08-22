@@ -41,9 +41,20 @@ function goHome() {
     window.location.href = "index.html";
 }
 
+function getFilmWord(count) {
+    if (count % 10 === 1 && count % 100 !== 11) {
+        return "фильм";
+    } else if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) {
+        return "фильма";
+    } else {
+        return "фильмов";
+    }
+}
+
 function updateMovieCount() {
     const totalMovies = Object.values(movieList).flat().length;
-    document.getElementById('movieCount').textContent = `В базе всего ${totalMovies} фильмов`;
+    const filmWord = getFilmWord(totalMovies);
+    document.getElementById('movieCount').textContent = `В базе всего ${totalMovies} ${filmWord}`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

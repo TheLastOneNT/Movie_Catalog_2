@@ -82,6 +82,7 @@ const movieList = {
     ],
     series: [
         { id: 31, name: "Викинги", image: "./Movie images/31.webp" },
+        { id: 39, name: "Бумажный дом", image: "./Movie images/39.webp" },
     ],
     cartoons: [
         { id: 1, name: "Неисправимый Рон", image: "./Movie images/ron.jpg" },
