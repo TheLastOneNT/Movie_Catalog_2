@@ -37,7 +37,7 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 30px;
+    height: 20px;
 }
 
 header .logo {
@@ -84,15 +84,19 @@ header .logo {
     height: 220px; /* Высота изображения */
     object-fit: cover; /* Сохранение пропорций изображения */
     border-radius: 4px;
+    margin-bottom: 5px; /* Уменьшение расстояния между постером и текстом */
 }
 
 .gallery-item h3 {
     font-size: 14px;
-    margin: 5px 0 0 0;
+    margin: 0; /* Убираем лишнее пространство вокруг текста */
+    line-height: 1.2; /* Межстрочное расстояние для текста */
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal; /* Позволяет тексту переноситься на следующую строку */
     overflow: hidden;
-    flex-shrink: 0; /* Запрет на сжатие текста */
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* Ограничение количества строк двумя */
+    -webkit-box-orient: vertical;
 }
 
 footer {
