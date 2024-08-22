@@ -92,6 +92,17 @@ header nav ul li a {
     height: 260px; /* Adjusted height */
 }
 
+@media (max-width: 768px) {
+    .gallery {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Изменение для мобильных устройств */
+    }
+
+    .gallery-item {
+        width: 150px; /* Уменьшение только для мобильных устройств */
+        height: 220px; /* Пропорциональное уменьшение высоты */
+    }
+}
+
 .gallery-item:hover {
     transform: scale(1.05);
 }
