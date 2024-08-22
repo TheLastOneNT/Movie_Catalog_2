@@ -30,7 +30,7 @@ const movieList = {
         { id: 15, name: "Зима в огне", image: "./Movie images/15.jpg" },
     ],
     series: [
-        { id: 31, name: "Викинги", image: "./Series images/31.webp" },
+        { id: 31, name: "Викинги", image: "./Movie images/31.webp" },
     ],
     cartoons: [
         { id: 1, name: "Неисправимый Рон", image: "./Movie images/ron.jpg" },
