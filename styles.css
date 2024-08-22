@@ -76,7 +76,8 @@ header .logo {
     height: 300px; /* Фиксированная высота контейнера */
     display: flex;
     flex-direction: column;
-    justify-content: space-between; /* Размещение элементов по вертикали */
+    justify-content: flex-start; /* Начинаем выравнивание сверху */
+    align-items: center; /* Центрируем содержимое по горизонтали */
 }
 
 .gallery-item img {
@@ -84,7 +85,7 @@ header .logo {
     height: 220px; /* Высота изображения */
     object-fit: cover; /* Сохранение пропорций изображения */
     border-radius: 4px;
-    margin-bottom: 5px; /* Уменьшение расстояния между постером и текстом */
+    margin-bottom: 4px; /* Еще большее уменьшение расстояния между постером и текстом */
 }
 
 .gallery-item h3 {
@@ -97,23 +98,5 @@ header .logo {
     display: -webkit-box;
     -webkit-line-clamp: 2; /* Ограничение количества строк двумя */
     -webkit-box-orient: vertical;
-}
-
-footer {
-    color: white;
-    text-align: center;
-    padding: 15px;
-    margin-top: 20px;
-}
-
-/* Медиа-запрос для мобильных устройств */
-@media (max-width: 768px) {
-    .gallery {
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Ширина контейнеров для мобильных устройств */
-    }
-
-    .gallery-item {
-        width: 160px; /* Ширина контейнера для мобильных устройств */
-        height: 300px; /* Фиксированная высота контейнера для мобильных устройств */
-    }
+    text-align: center; /* Центрирование текста по горизонтали */
 }
