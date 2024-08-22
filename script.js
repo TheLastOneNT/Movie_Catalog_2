@@ -58,8 +58,11 @@ function showMovies(category) {
     });
 
     categorySection.style.display = 'none'; // Скрыть секцию категорий
-    moviesSection.style.display = 'grid'; // Показать секцию фильмов в виде сетки
-    movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))'; // Установить 2 постера в ряд
+    moviesSection.style.display = 'block'; // Показать секцию фильмов
+
+    movieGallery.style.display = 'grid'; // Устанавливаем display grid для галереи
+    movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))'; // Устанавливаем 2 постера в ряд
+    movieGallery.style.gap = '15px'; // Устанавливаем отступы между постерами
 }
 
 // Добавляем обработчики событий для категорий

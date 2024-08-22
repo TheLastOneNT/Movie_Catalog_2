@@ -15,31 +15,27 @@
         </video>
     </div>
     <header>
-        <div class="logo" id="homeLink">Movie Catalog</div>
+        <div class="logo">Movie Catalog</div>
     </header>
 
     <div class="main-content" id="categorySection">
-        <!-- Постеры -->
-        <div class="poster-container poster-vertical" id="moviesCategory">
+        <!-- Постеры категорий -->
+        <div class="poster-container poster-vertical" id="moviesCategory" onclick="navigateTo('movies')">
             <img src="Types/Movies.jpg" alt="Movies">
             <h3>Фильмы</h3>
         </div>
-        <div class="poster-container poster-vertical" id="documentariesCategory">
+        <div class="poster-container poster-vertical" id="documentariesCategory" onclick="navigateTo('documentaries')">
             <img src="Types/Documentary.jpg" alt="Документалки">
             <h3>Документалки</h3>
         </div>
-        <div class="poster-container poster-vertical" id="seriesCategory">
+        <div class="poster-container poster-vertical" id="seriesCategory" onclick="navigateTo('series')">
             <img src="Types/Series.jpg" alt="Series">
             <h3>Сериалы</h3>
         </div>
-        <div class="poster-container poster-vertical" id="cartoonsCategory">
+        <div class="poster-container poster-vertical" id="cartoonsCategory" onclick="navigateTo('cartoons')">
             <img src="Types/Cartoons.jpg" alt="Cartoons">
             <h3>Мультфильмы</h3>
         </div>
-    </div>
-
-    <div class="movies-section" id="moviesSection" style="display: none;">
-        <div class="gallery" id="movieGallery"></div>
     </div>
 
     <footer>
