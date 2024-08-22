@@ -40,33 +40,39 @@ const movieList = {
     ]
 };
 
-const categorySection = document.getElementById('categorySection');
-const moviesSection = document.getElementById('moviesSection');
-const movieGallery = document.getElementById('movieGallery');
-
 function showMovies(category) {
-    movieGallery.innerHTML = ''; // Очистка галереи
-
-    movieList[category].forEach(movie => {
-        const movieItem = document.createElement('div');
-        movieItem.className = 'gallery-item';
-        movieItem.innerHTML = `
-            <img src="${movie.image}" alt="${movie.name}">
-            <h3>${movie.name}</h3>
-        `;
-        movieGallery.appendChild(movieItem);
-    });
-
-    categorySection.style.display = 'none'; // Скрыть секцию категорий
-    moviesSection.style.display = 'block'; // Показать секцию фильмов
-
-    movieGallery.style.display = 'grid'; // Устанавливаем display grid для галереи
-    movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))'; // Устанавливаем 2 постера в ряд
-    movieGallery.style.gap = '15px'; // Устанавливаем отступы между постерами
+    localStorage.setItem('selectedCategory', category);
+    window.location.href = "movies.html";
 }
 
-// Возврат на главную страницу при клике на хедер
-document.getElementById('homeLink').addEventListener('click', () => {
-    categorySection.style.display = 'flex';
-    moviesSection.style.display = 'none';
+function displayMovies() {
+    const selectedCategory = localStorage.getItem('selectedCategory');
+    if (selectedCategory) {
+        const movieGallery = document.getElementById('movieGallery');
+        movieGallery.innerHTML = ''; // Очистка галереи
+
+        movieList[selectedCategory].forEach(movie => {
+            const movieItem = document.createElement('div');
+            movieItem.className = 'gallery-item';
+            movieItem.innerHTML = `
+                <img src="${movie.image}" alt="${movie.name}">
+                <h3>${movie.name}</h3>
+            `;
+            movieGallery.appendChild(movieItem);
+        });
+
+        movieGallery.style.display = 'grid';
+        movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
+        movieGallery.style.gap = '15px';
+    }
+}
+
+function goHome() {
+    window.location.href = "index.html";
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('moviesSection')) {
+        displayMovies();
+    }
 });
