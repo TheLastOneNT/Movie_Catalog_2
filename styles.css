@@ -72,8 +72,8 @@ header .logo {
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
-    width: 200px; /* Возвращаем ширину контейнеров для ПК */
-    height: 260px; /* Возвращаем высоту контейнеров для ПК */
+    width: 180px; /* Возвращаем ширину контейнеров для ПК */
+    height: 220px; /* Возвращаем высоту контейнеров для ПК */
 }
 
 .gallery-item img {
