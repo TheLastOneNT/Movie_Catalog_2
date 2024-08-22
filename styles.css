@@ -104,11 +104,11 @@ footer {
 /* Медиа-запрос для мобильных устройств */
 @media (max-width: 768px) {
     .gallery {
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Изменение для мобильных устройств */
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Изменение для мобильных устройств */
     }
 
     .gallery-item {
-        width: 200px; /* Уменьшение только для мобильных устройств */
+        width: 180px; /* Уменьшение только для мобильных устройств */
         height: 280px; /* Пропорциональное уменьшение высоты */
     }
 }
