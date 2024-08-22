@@ -49,11 +49,12 @@ header .logo {
 }
 
 .main-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    height: 80%; /* Высота секции контента 80% от высоты экрана */
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Две колонки */
+    grid-template-rows: 1fr 1fr; /* Две строки */
+    gap: 20px; /* Отступы между постерами */
     padding: 20px;
+    height: 80%; /* Высота секции контента 80% от высоты экрана */
 }
 
 .poster-container {
@@ -80,16 +81,9 @@ header .logo {
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); /* Добавляем тень для лучшей читаемости */
 }
 
-.vertical-poster {
-    width: 30%;
-    height: 48%;
-    margin-bottom: 20px;
-}
-
-.horizontal-poster {
-    width: 65%;
-    height: 48%;
-    margin-bottom: 20px;
+.poster-vertical {
+    width: 100%;
+    height: 100%; /* Постеры занимают всю высоту и ширину контейнера */
 }
 
 footer {
