@@ -97,6 +97,13 @@ header .logo {
     background: none;
 }
 
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Устанавливаем сетку с минимум 2 постерами в ряд */
+    gap: 15px; /* Отступы между элементами */
+    justify-items: center;
+}
+
 .gallery-item {
     background-color: rgba(255, 255, 255, 0.9);
     padding: 8px;
@@ -106,7 +113,7 @@ header .logo {
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
     width: 160px; /* Ширина контейнера */
-    height: 300px; /* Фиксированная высота контейнера */
+    height: 300px; /* Высота контейнера */
     display: flex;
     flex-direction: column;
     justify-content: center;

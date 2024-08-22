@@ -61,6 +61,7 @@ function displayMovies() {
             movieGallery.appendChild(movieItem);
         });
 
+        // Настройка сетки для показа двух постеров в ряду
         movieGallery.style.display = 'grid';
         movieGallery.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
         movieGallery.style.gap = '15px';
