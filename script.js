@@ -59,13 +59,13 @@ shuffledMovies.forEach(movie => {
     gallery.appendChild(movieItem);
 });
 
-// Navigation functionality
+// Навигационная функциональность
 const moviesSection = document.getElementById('moviesSection');
 
-document.getElementById('moviesLink').addEventListener('click', () => {
+document.getElementById('moviesLink')?.addEventListener('click', () => {
     moviesSection.scrollIntoView({ behavior: 'smooth' });
 });
 
-document.getElementById('homeLink').addEventListener('click', () => {
+document.getElementById('homeLink')?.addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 });
