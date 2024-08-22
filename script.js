@@ -41,8 +41,14 @@ function goHome() {
     window.location.href = "index.html";
 }
 
+function updateMovieCount() {
+    const totalMovies = Object.values(movieList).flat().length;
+    document.getElementById('movieCount').textContent = `В базе всего ${totalMovies} фильмов`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('moviesSection')) {
         displayMovies();
     }
+    updateMovieCount(); // Обновляем количество фильмов в футере
 });
