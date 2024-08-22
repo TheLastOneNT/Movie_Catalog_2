@@ -46,23 +46,6 @@ header .logo {
     margin: 0 auto;
 }
 
-header nav ul {
-    list-style: none;
-    display: flex;
-    margin: 0;
-    padding: 0;
-}
-
-header nav ul li {
-    margin: 0 15px;
-}
-
-header nav ul li a {
-    color: white;
-    text-decoration: none;
-    font-weight: bold;
-}
-
 .movies-section {
     padding: 20px;
     background: none;
@@ -76,27 +59,23 @@ header nav ul li a {
 .gallery {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 15px;
+    gap: 20px; /* Увеличено расстояние между элементами */
     justify-items: center;
 }
 
 .gallery-item {
     background-color: rgba(255, 255, 255, 0.9);
-    padding: 8px;
+    padding: 10px; /* Увеличен padding для лучшей видимости */
     border: 1px solid #ddd;
     border-radius: 4px;
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out;
-    width: 200px; /* Adjusted width */
-    height: 260px; /* Adjusted height */
+    width: 200px; /* Стандартная ширина для ПК */
+    height: 260px; /* Стандартная высота для ПК */
 }
 
 @media (max-width: 768px) {
-    .gallery {
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Изменение для мобильных устройств */
-    }
-
     .gallery-item {
         width: 150px; /* Уменьшение только для мобильных устройств */
         height: 220px; /* Пропорциональное уменьшение высоты */
@@ -109,7 +88,7 @@ header nav ul li a {
 
 .gallery-item img {
     width: 100%;
-    height: 230px; /* Adjusted image height */
+    height: 230px;
     object-fit: cover;
     border-radius: 4px;
 }
@@ -120,14 +99,6 @@ header nav ul li a {
     text-overflow: ellipsis;
     white-space: nowrap;
     overflow: hidden;
-}
-
-.gallery-item p {
-    font-size: 12px;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 footer {
