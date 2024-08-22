@@ -59,22 +59,6 @@ shuffledMovies.forEach(movie => {
     gallery.appendChild(movieItem);
 });
 
-
-const gallery = document.getElementById('movieGallery');
-
-// Clear existing gallery content
-gallery.innerHTML = '';
-
-movieList.forEach(movie => {
-    const movieItem = document.createElement('div');
-    movieItem.className = 'gallery-item';
-    movieItem.innerHTML = `
-        <img src="${movie.image}" alt="${movie.name}">
-        <h3>${movie.name}</h3>
-    `;
-    gallery.appendChild(movieItem);
-});
-
 // Navigation functionality
 const moviesSection = document.getElementById('moviesSection');
 
