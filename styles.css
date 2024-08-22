@@ -87,6 +87,56 @@ header .logo {
     box-sizing: border-box;
 }
 
+.movies-section {
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* По 2 постера в ряд */
+    gap: 15px;
+    justify-items: center;
+    background: none;
+}
+
+.gallery-item {
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+    box-sizing: border-box;
+    transition: transform 0.3s ease-in-out;
+    width: 160px; /* Ширина контейнера */
+    height: 300px; /* Фиксированная высота контейнера */
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Вертикальное центрирование текста и изображения */
+    align-items: center; /* Центрирование содержимого по горизонтали */
+}
+
+.gallery-item img {
+    width: 100%;
+    height: 220px; /* Высота изображения */
+    object-fit: cover; /* Сохранение пропорций изображения */
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.gallery-item h3 {
+    font-size: 16px;
+    margin: 0;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    text-align: center;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 footer {
     color: white;
     text-align: center;
