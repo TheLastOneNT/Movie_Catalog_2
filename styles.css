@@ -89,7 +89,7 @@ header .logo {
 }
 
 .gallery-item h3 {
-    font-size: 14px;
+    font-size: 16px;
     margin: 0; /* Убираем лишнее пространство вокруг текста */
     line-height: 1.2; /* Межстрочное расстояние для текста */
     text-overflow: ellipsis;
