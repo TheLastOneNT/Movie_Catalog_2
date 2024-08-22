@@ -52,11 +52,10 @@ header .logo {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    justify-content: space-around;
     width: 85%; /* Ширина секции 85% от ширины экрана */
     margin: 0 auto;
-    flex-grow: 1; /* Занимает всё доступное пространство */
-    padding: 10px 0;
+    flex-grow: 1; /* Основная часть высоты */
 }
 
 .category {
@@ -70,19 +69,14 @@ header .logo {
     transition: transform 0.3s ease-in-out;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     width: 100%; /* Иконки занимают 100% ширины родительского контейнера */
-    height: calc((100% - 40px) / 3); /* Высота каждой иконки, учитывая отступы */
+    height: 25%; /* Высота каждой иконки */
     box-sizing: border-box;
-    margin-bottom: 20px; /* Отступ между иконками */
-}
-
-.category:last-child {
-    margin-bottom: 0; /* Убираем отступ у последней иконки */
 }
 
 .category img {
     width: auto;
     height: 60px;
-    object-fit: contain; /* Сохраняем пропорции изображения */
+    object-fit: contain; /* Сохраняем пропорции внутри контейнера */
     margin-bottom: 10px;
 }
 
