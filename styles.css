@@ -6,7 +6,7 @@ body, html {
     color: #000;
     height: 100%;
     background: none;
-    overflow: auto;
+    overflow: hidden; /* Отключаем прокрутку */
 }
 
 .video-container {
@@ -33,27 +33,26 @@ body, html {
 
 header {
     color: white;
-    padding: 15px 20px;
+    padding: 10px;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 20px;
+    height: 15%; /* Высота хедера равна 15% от высоты окна */
 }
 
 header .logo {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
     text-align: center;
-    margin: 0 auto;
 }
 
 .category-section {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-around;
-    height: 100vh; /* Высота секции равна высоте окна браузера */
-    padding: 20px;
+    justify-content: space-evenly; /* Равномерное распределение иконок */
+    height: 70%; /* Основная часть высоты */
+    padding: 10px;
 }
 
 .category {
@@ -63,22 +62,23 @@ header .logo {
     justify-content: center;
     text-align: center;
     background-color: rgba(255, 255, 255, 0.8);
-    padding: 20px;
+    padding: 10px;
     border-radius: 8px;
     transition: transform 0.3s ease-in-out;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    width: 80%; /* Ширина иконок равна 80% ширины экрана */
+    width: 60%; /* Ширина иконок равна 60% ширины экрана */
+    max-width: 120px; /* Ограничение максимальной ширины */
 }
 
 .category img {
-    width: 50px;
-    height: 50px;
+    width: 40px;
+    height: 40px;
     object-fit: cover;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 .category h3 {
-    font-size: 18px;
+    font-size: 14px;
     margin: 0;
 }
 
@@ -142,6 +142,9 @@ header .logo {
 footer {
     color: white;
     text-align: center;
-    padding: 15px;
-    margin-top: 20px;
+    padding: 10px;
+    height: 15%; /* Высота футера равна 15% от высоты окна */
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
