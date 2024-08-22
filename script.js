@@ -162,7 +162,6 @@ movieList.forEach(movie => {
     movieItem.innerHTML = `
         <img src="${movie.image}" alt="${movie.name}">
         <h3>${movie.name}</h3>
-        <p>${movie.genre.join(', ')}</p>
     `;
     gallery.appendChild(movieItem);
 });
@@ -171,10 +170,6 @@ movieList.forEach(movie => {
 const moviesSection = document.getElementById('moviesSection');
 
 document.getElementById('moviesLink').addEventListener('click', () => {
-    moviesSection.scrollIntoView({ behavior: 'smooth' });
-});
-
-document.getElementById('genresLink').addEventListener('click', () => {
     moviesSection.scrollIntoView({ behavior: 'smooth' });
 });
 
