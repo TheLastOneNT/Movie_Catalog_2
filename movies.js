@@ -20,6 +20,7 @@ const movieList = {
         { id: 24, name: "Укрощение строптивого", image: "./Movie images/24.jpg" },
         { id: 25, name: "Блеф", image: "./Movie images/25.jpg" },
         { id: 26, name: "Нокдаун", image: "./Movie images/26.jpg" },
+        { id: 27, name: "Гладиатор", image: "./Movie images/27.jpg" },
         { id: 28, name: "Последний самурай", image: "./Movie images/28.jpg" },
         { id: 29, name: "Грань будущего", image: "./Movie images/29.jpg" },
         { id: 30, name: "Обливион", image: "./Movie images/30.jpg" },
