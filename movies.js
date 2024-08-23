@@ -28,7 +28,6 @@ const movieList = {
             { id: 33, name: "Интерстеллар", image: "./Movie images/33.jpg" },
             { id: 34, name: "Пианист", image: "./Movie images/34.jpg" },
             { id: 35, name: "Леон", image: "./Movie images/35.webp" },
-            { id: 36, name: "Гладиатор", image: "./Movie images/36.webp" },
             { id: 37, name: "Отступники", image: "./Movie images/37.jpg" },
             { id: 38, name: "1 + 1", image: "./Movie images/38.jpg" },
             { id: 40, name: "Шоу Трумана", image: "./Movie images/40.jpg" },
