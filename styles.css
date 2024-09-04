@@ -4,10 +4,14 @@ html, body {
     padding: 0;
     font-family: Arial, sans-serif;
     color: #000;
-    height: 100%; /* Задаем 100% высоту для всей страницы */
+    height: 100%; /* 100% высота для страницы */
     background: url('bg_wallpaper.jpg') no-repeat center center fixed; /* Фоновое изображение */
     background-size: cover; /* Изображение покрывает весь экран */
-    overflow: auto; /* Разрешаем скроллинг */
+}
+
+body {
+    display: flex;
+    flex-direction: column; /* Flexbox для структуры страницы */
 }
 
 header {
@@ -16,7 +20,8 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 10%; /* Фиксированная высота хедера */
+    flex-shrink: 0;
+    height: 10vh; /* Высота хедера 10% от высоты экрана */
     cursor: pointer;
 }
 
@@ -27,13 +32,13 @@ header .logo {
 }
 
 .main-content {
+    flex-grow: 1; /* Основной контент занимает оставшееся пространство */
     display: grid;
     grid-template-columns: 1fr 1fr; /* Две колонки */
     grid-template-rows: 1fr 1fr; /* Две строки */
     gap: 20px; /* Отступы между постерами */
     padding: 20px;
-    height: calc(100vh - 20%); /* Высота с учетом хедера и футера (100vh минус 20%) */
-    overflow-y: auto; /* Разрешаем вертикальный скроллинг, если контента больше чем доступно */
+    overflow-y: auto; /* Вертикальный скроллинг, если контента больше, чем доступного пространства */
 }
 
 .poster-container {
@@ -127,7 +132,8 @@ footer {
     color: white;
     text-align: center;
     padding: 10px;
-    height: 10%; /* Фиксированная высота футера */
+    flex-shrink: 0;
+    height: 10vh; /* Высота футера 10% от высоты экрана */
     display: flex;
     justify-content: center;
     align-items: center;
