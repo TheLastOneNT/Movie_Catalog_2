@@ -34,8 +34,6 @@ header {
     flex-shrink: 0;
     height: 5vh; /* Уменьшенная высота хедера */
     cursor: pointer;
-    background-color: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(5px);
     margin-top: 5px; /* Чтобы хедер был ближе к верхнему краю */
 }
 
@@ -108,6 +106,15 @@ header .logo {
     border-radius: 5px;
 }
 
+/* Главный экран */
+.main-content-index .poster-container {
+    height: 400px; /* Увеличенная высота контейнеров на главной странице */
+}
+
+.main-content-index .poster-container img {
+    height: 340px; /* Увеличенная высота изображений на главной странице */
+}
+
 .movies-section {
     padding: 20px;
     display: grid;
@@ -132,22 +139,17 @@ header .logo {
     text-align: center;
     box-sizing: border-box;
     transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-    width: 160px; /* Ширина контейнера */
-    height: 350px; /* Увеличиваем высоту постеров */
+    width: 160px;
+    height: 300px; /* Вернул прежнюю высоту постеров в категориях */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 
-.gallery-item:hover {
-    transform: scale(1.05);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
-
 .gallery-item img {
     width: 100%;
-    height: 280px; /* Увеличенная высота изображений для вытянутого постера */
+    height: 220px; /* Вернул прежнюю высоту изображений в категориях */
     object-fit: cover;
     border-radius: 4px;
     margin-bottom: 4px;
@@ -179,7 +181,5 @@ footer {
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(5px);
     margin-bottom: 5px; /* Чтобы футер был ближе к нижнему краю */
 }
