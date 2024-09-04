@@ -4,14 +4,25 @@ html, body {
     padding: 0;
     font-family: Arial, sans-serif;
     color: #000;
-    height: 100%; /* 100% высота для страницы */
-    background: url('bg_wallpaper.jpg') no-repeat center center fixed; /* Фоновое изображение */
-    background-size: cover; /* Изображение покрывает весь экран */
+    height: 100%;
+    background: url('bg_wallpaper.jpg') no-repeat center center fixed;
+    background-size: cover;
+    overflow: auto;
 }
 
 body {
     display: flex;
-    flex-direction: column; /* Flexbox для структуры страницы */
+    flex-direction: column;
+    animation: fadeIn 1s ease-in;
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 
 header {
@@ -21,38 +32,63 @@ header {
     justify-content: center;
     align-items: center;
     flex-shrink: 0;
-    height: 10vh; /* Высота хедера 10% от высоты экрана */
+    height: 5vh; /* Уменьшенная высота хедера */
     cursor: pointer;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    margin-top: 5px; /* Чтобы хедер был ближе к верхнему краю */
 }
 
 header .logo {
     font-size: 24px;
     font-weight: bold;
     text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
 }
 
 .main-content {
-    flex-grow: 1; /* Основной контент занимает оставшееся пространство */
+    flex-grow: 1;
     display: grid;
-    grid-template-columns: 1fr 1fr; /* Две колонки */
-    grid-template-rows: 1fr 1fr; /* Две строки */
-    gap: 20px; /* Отступы между постерами */
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
     padding: 20px;
-    overflow-y: auto; /* Вертикальный скроллинг, если контента больше, чем доступного пространства */
+    overflow-y: auto;
+    opacity: 0;
+    animation: fadeInContent 0.8s ease-in forwards;
+}
+
+@keyframes fadeInContent {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .poster-container {
     position: relative;
     box-sizing: border-box;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.poster-container:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .poster-container img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 8px;
+    border-radius: 12px;
 }
 
 .poster-container h3 {
@@ -69,21 +105,21 @@ header .logo {
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
     width: 90%;
     box-sizing: border-box;
+    border-radius: 5px;
 }
 
 .movies-section {
     padding: 20px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* Два постера в ряд */
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 15px;
     justify-items: center;
-    background: none;
 }
 
 .gallery {
     display: grid;
-    grid-template-columns: repeat(2, 1fr); /* Сетка для двух постеров в ряду */
-    gap: 15px; /* Отступы между элементами */
+    grid-template-columns: repeat(2, 1fr); /* Две колонки */
+    gap: 15px;
     justify-items: center;
 }
 
@@ -91,21 +127,27 @@ header .logo {
     background-color: rgba(255, 255, 255, 0.9);
     padding: 8px;
     border: 1px solid #ddd;
-    border-radius: 4px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     text-align: center;
     box-sizing: border-box;
-    transition: transform 0.3s ease-in-out;
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
     width: 160px; /* Ширина контейнера */
-    height: 300px; /* Высота контейнера */
+    height: 350px; /* Увеличиваем высоту постеров */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 
+.gallery-item:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
 .gallery-item img {
     width: 100%;
-    height: 220px; /* Высота изображения */
+    height: 280px; /* Увеличенная высота изображений для вытянутого постера */
     object-fit: cover;
     border-radius: 4px;
     margin-bottom: 4px;
@@ -133,8 +175,11 @@ footer {
     text-align: center;
     padding: 10px;
     flex-shrink: 0;
-    height: 10vh; /* Высота футера 10% от высоты экрана */
+    height: 5vh; /* Уменьшенная высота футера */
     display: flex;
     justify-content: center;
     align-items: center;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    margin-bottom: 5px; /* Чтобы футер был ближе к нижнему краю */
 }
