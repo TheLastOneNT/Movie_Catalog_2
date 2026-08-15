@@ -8,6 +8,10 @@
   --gold: #d6ad63;
   --gold-bright: #f0c77a;
   --green: #8fb996;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -45,11 +49,11 @@ img { display: block; max-width: 100%; }
   z-index: 60;
   top: 0;
   width: 100%;
-  height: 82px;
+  height: calc(82px + var(--safe-top));
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  padding: 0 clamp(24px, 5vw, 80px);
+  padding: var(--safe-top) max(clamp(24px, 5vw, 80px), var(--safe-right)) 0 max(clamp(24px, 5vw, 80px), var(--safe-left));
   border-bottom: 1px solid rgba(255,255,255,.08);
   background: rgba(7,7,9,.92);
   box-shadow: 0 12px 36px rgba(0,0,0,.22);
@@ -75,7 +79,7 @@ img { display: block; max-width: 100%; }
 .syncBadge { display: inline-flex; align-items: center; gap: 7px; color: #8dba95; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .syncBadge.saving { color: var(--gold-bright); }
 .syncBadge.offline, .syncBadge.error { color: #d88e83; }
-.offlineBanner { position: fixed; z-index: 80; left: 50%; top: 92px; transform: translateX(-50%); padding: 10px 15px; border: 1px solid rgba(216,142,131,.35); background: rgba(48,25,24,.94); color: #f0b2aa; font-size: 11px; box-shadow: 0 12px 35px rgba(0,0,0,.35); }
+.offlineBanner { position: fixed; z-index: 80; left: 50%; top: calc(92px + var(--safe-top)); transform: translateX(-50%); padding: 10px 15px; border: 1px solid rgba(216,142,131,.35); background: rgba(48,25,24,.94); color: #f0b2aa; font-size: 11px; box-shadow: 0 12px 35px rgba(0,0,0,.35); }
 
 .primaryButton, .ghostButton { height: 49px; padding: 0 22px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: 2px; font-size: 12px; font-weight: 700; letter-spacing: .04em; cursor: pointer; transition: transform .2s ease, background .2s ease; }
 .primaryButton { border: 1px solid var(--gold); background: var(--gold); color: #12100d; }
@@ -159,9 +163,9 @@ img { display: block; max-width: 100%; }
 .randomModalNext { right: max(14px, calc(50vw - 535px)); }
 .movieModal { position: relative; width: min(920px, 100%); max-height: min(760px, calc(100vh - 56px)); min-height: 590px; display: grid; grid-template-columns: minmax(280px, 38%) 1fr; overflow: hidden; border: 1px solid rgba(255,255,255,.13); background: #111114; box-shadow: 0 35px 90px rgba(0,0,0,.6); animation: lift .24s ease; }
 .modalClose { position: absolute; z-index: 5; top: 16px; right: 16px; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: rgba(9,9,11,.72); color: #c6c4c5; cursor: pointer; backdrop-filter: blur(6px); }
-.modalPoster { min-height: 590px; background: #19191d; }
-.modalPoster img { width: 100%; height: 100%; object-fit: cover; }
-.modalInfo { padding: 56px 44px 34px; display: flex; flex-direction: column; overflow-y: auto; }
+.modalPoster { min-width: 0; min-height: 590px; overflow: hidden; background: #19191d; }
+.modalPoster img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
+.modalInfo { position: relative; z-index: 1; padding: 56px 44px 34px; display: flex; flex-direction: column; overflow-y: auto; background: #111114; }
 .modalCategory { color: var(--gold-bright); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; }
 .modalInfo h2 { margin: 12px 0 16px; font-family: Georgia, serif; font-size: clamp(32px, 4vw, 48px); font-weight: 400; line-height: 1.05; letter-spacing: -.035em; }
 .modalLead { margin: 0 0 30px; color: #8f8e94; font-size: 12px; line-height: 1.7; }
@@ -259,10 +263,10 @@ img { display: block; max-width: 100%; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
-  .siteHeader { height: 124px; grid-template-columns: 1fr auto; grid-template-rows: 72px 52px; }
+  .siteHeader { height: calc(124px + var(--safe-top)); grid-template-columns: 1fr auto; grid-template-rows: 72px 52px; }
   .desktopNav { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; justify-content: center; border-top: 1px solid rgba(255,255,255,.05); }
   .syncBadge { display: none; }
-  .catalogSection { min-height: calc(100vh - 124px); padding-top: 42px; }
+  .catalogSection { min-height: calc(100vh - 124px - var(--safe-top)); padding-top: 42px; }
   .movieGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .toolbar { grid-template-columns: minmax(220px, 1fr) auto auto auto; }
   .toolbar .resultCount { grid-column: 1 / -1; text-align: left; }
@@ -276,7 +280,7 @@ img { display: block; max-width: 100%; }
 }
 
 @media (max-width: 680px) {
-  .siteHeader { height: 112px; grid-template-rows: 64px 48px; padding: 0 16px; }
+  .siteHeader { height: calc(112px + var(--safe-top)); grid-template-rows: 64px 48px; padding: var(--safe-top) max(16px, var(--safe-right)) 0 max(16px, var(--safe-left)); }
   .brand { font-size: 11px; letter-spacing: .15em; }
   .brandMark { width: 32px; height: 32px; }
   .randomHeader span, .addHeader span { display: none; }
@@ -286,7 +290,7 @@ img { display: block; max-width: 100%; }
   .languageSwitch button { width: 27px; }
   .desktopNav { justify-content: flex-start; gap: 24px; margin: 0 -16px; padding: 0 16px; }
   .desktopNav button { font-size: 9px; }
-  .catalogSection { min-height: calc(100vh - 112px); padding: 30px 15px 70px; }
+  .catalogSection { min-height: calc(100vh - 112px - var(--safe-top)); padding: 30px max(15px, var(--safe-right)) max(70px, var(--safe-bottom)) max(15px, var(--safe-left)); }
   .sectionIntro { align-items: flex-start; margin-bottom: 24px; }
   .catalogIntro { flex-direction: column; gap: 22px; }
   .catalogSummary { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; }
@@ -305,10 +309,10 @@ img { display: block; max-width: 100%; }
   .siteFooter { display: flex; flex-direction: column; justify-content: center; text-align: center; }
   .footerActions { justify-self: auto; flex-direction: column; width: 100%; }
   .footerActions button { justify-content: center; }
-  .modalBackdrop { padding: 4px; place-items: start center; overflow: hidden; }
-  .movieModal { width: 100%; height: calc(100svh - 8px); max-height: calc(100svh - 8px); min-height: 0; display: block; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .modalPoster { width: 100%; height: min(46svh, 410px); min-height: 0; padding: 12px 48px 12px 12px; display: grid; place-items: center; background: #09090b; }
-  .modalPoster img { width: 100%; height: 100%; object-fit: contain; }
+  .modalBackdrop { padding: calc(var(--safe-top) + 8px) max(4px, var(--safe-right)) max(4px, var(--safe-bottom)) max(4px, var(--safe-left)); place-items: start center; overflow: hidden; }
+  .movieModal { width: 100%; height: calc(100svh - var(--safe-top) - var(--safe-bottom) - 12px); max-height: calc(100svh - var(--safe-top) - var(--safe-bottom) - 12px); min-height: 0; display: block; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .modalPoster { width: 100%; height: min(38svh, 330px); min-height: 0; padding: 12px 52px 12px 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #09090b; }
+  .modalPoster img { width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
   .modalInfo { padding: 24px 18px calc(28px + env(safe-area-inset-bottom)); overflow: visible; }
   .movieModal.randomMode .modalInfo { padding-bottom: calc(102px + env(safe-area-inset-bottom)); }
   .modalInfo h2 { font-size: 31px; }
@@ -325,12 +329,12 @@ img { display: block; max-width: 100%; }
   .notesField textarea { min-height: 105px; }
   .modalActions { flex-direction: column; }
   .modalActions button { min-height: 46px; font-size: 10px; }
-  .randomModalNav { top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); width: 54px; height: 54px; transform: none; background: rgba(20,19,21,.96); }
+  .randomModalNav { top: auto; bottom: calc(12px + var(--safe-bottom)); width: 54px; height: 54px; transform: none; background: rgba(20,19,21,.96); }
   .randomModalNav:hover:not(:disabled) { transform: scale(1.04); }
   .randomModalPrevious { left: calc(50% - 66px); }
   .randomModalNext { right: calc(50% - 66px); }
   .formBackdrop, .guideBackdrop { overflow-y: auto; }
-  .addMovieModal { width: 100%; max-height: calc(100svh - 8px); padding: 34px 18px calc(28px + env(safe-area-inset-bottom)); }
+  .addMovieModal { width: 100%; max-height: calc(100svh - var(--safe-top) - var(--safe-bottom) - 12px); padding: 34px 18px calc(28px + var(--safe-bottom)); }
   .addMovieHeading h2, .installGuide h2 { font-size: 32px; }
   .addMovieForm { grid-template-columns: 1fr; }
   .addMovieFields { grid-template-columns: 1fr; }
@@ -339,11 +343,11 @@ img { display: block; max-width: 100%; }
   .addMovieFields textarea { min-height: 100px; }
   .posterUpload { width: min(220px, 100%); margin: 0 auto; }
   .addMovieSubmit { grid-column: auto; min-height: 50px; font-size: 13px; }
-  .installGuide { width: 100%; padding: 34px 24px calc(28px + env(safe-area-inset-bottom)); }
-  .accessPage { padding: 15px; }
+  .installGuide { width: 100%; padding: 34px 24px calc(28px + var(--safe-bottom)); }
+  .accessPage { padding: calc(15px + var(--safe-top)) max(15px, var(--safe-right)) calc(15px + var(--safe-bottom)) max(15px, var(--safe-left)); }
   .accessCard { padding: 34px 25px; }
   .accessCard h1 { font-size: 33px; }
-  .accessLanguage { top: 16px; right: 16px; }
+  .accessLanguage { top: calc(16px + var(--safe-top)); right: max(16px, var(--safe-right)); }
   .accessForm input { font-size: 16px; }
 }
 
@@ -352,7 +356,7 @@ img { display: block; max-width: 100%; }
   .catalogStats { width: 100%; }
   .catalogStats span { flex: 1; }
   .catalogRandom { justify-content: center; }
-  .modalPoster { height: min(44svh, 360px); }
+  .modalPoster { height: min(36svh, 300px); }
 }
 
 @media (max-width: 360px) {

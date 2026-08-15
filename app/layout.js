@@ -7,7 +7,7 @@ export const metadata = {
   appleWebApp: {
     capable: true,
     title: "Movie Catalog",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "black",
   },
   robots: {
     index: false,
@@ -15,7 +15,7 @@ export const metadata = {
   },
   icons: {
     icon: "/film-reel.png",
-    apple: "/film-reel.png",
+    apple: "/app-icon-v2.png",
   },
 };
 
