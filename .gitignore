@@ -1,0 +1,9 @@
+.next/
+dist/
+out/
+node_modules/
+.env*
+.dev.vars
+.wrangler/
+*.log
+.DS_Store
