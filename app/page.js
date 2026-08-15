@@ -2,13 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translations } from "@/lib/i18n";
+import { matchesMovieQuery } from "@/lib/search";
 
-const categoryCards = [
-  { id: "movies", image: "/categories/Movies.jpg" },
-  { id: "series", image: "/categories/Series.jpg" },
-  { id: "cartoons", image: "/categories/Cartoons.jpg" },
-  { id: "documentaries", image: "/categories/Documentary.jpg" },
-];
+const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
 const statusOrder = ["unwatched", "planned", "watching", "watched", "dropped"];
 
@@ -31,6 +27,8 @@ function Icon({ name, size = 20, filled = false }) {
     close: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
     check: <path d="m5 12 4 4L19 6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
+    arrowLeft: <><path d="m15 18-6-6 6-6" /><path d="M9 12h10" /></>,
+    arrowRight: <><path d="m9 18 6-6-6-6" /><path d="M5 12h10" /></>,
     film: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 5v14M17 5v14M3 9h4M17 9h4M3 15h4M17 15h4" /></>,
     grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
     list: <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>,
@@ -193,6 +191,8 @@ export default function Home() {
   const [sort, setSort] = useState("collection");
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
+  const [randomHistory, setRandomHistory] = useState([]);
+  const [randomIndex, setRandomIndex] = useState(-1);
   const [noteDraft, setNoteDraft] = useState("");
   const [syncState, setSyncState] = useState("synced");
   const requestQueue = useRef(Promise.resolve());
@@ -265,6 +265,8 @@ export default function Home() {
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
         setSelectedId(null);
+        setRandomHistory([]);
+        setRandomIndex(-1);
         setAccessPromptOpen(false);
         pendingAction.current = null;
       }
@@ -413,11 +415,9 @@ export default function Home() {
   };
 
   const filtered = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase(t.locale);
     let result = movies.filter((movie) => {
-      const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
       if (category !== "all" && movie.category !== category) return false;
-      if (normalizedQuery && !title.toLocaleLowerCase(t.locale).includes(normalizedQuery)) return false;
+      if (!matchesMovieQuery(movie, query, t.locale)) return false;
       if (status === "rated" && !movie.progress.rating) return false;
       if (status === "favorites" && !movie.progress.isFavorite) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
@@ -433,10 +433,55 @@ export default function Home() {
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const favoriteCount = movies.filter((movie) => movie.progress.isFavorite).length;
   const selected = movies.find((movie) => movie.id === selectedId) || null;
+  const randomMode = randomIndex >= 0;
+
+  const getRandomId = (excludeId = null) => {
+    const pool = filtered.length ? filtered : movies;
+    const candidates = pool.length > 1 ? pool.filter((movie) => movie.id !== excludeId) : pool;
+    return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)].id : null;
+  };
 
   const chooseRandom = () => {
-    const pool = filtered.length ? filtered : movies;
-    if (pool.length) setSelectedId(pool[Math.floor(Math.random() * pool.length)].id);
+    const nextId = getRandomId(selectedId);
+    if (nextId === null) return;
+    setRandomHistory([nextId]);
+    setRandomIndex(0);
+    setSelectedId(nextId);
+  };
+
+  const showPreviousRandom = () => {
+    if (randomIndex <= 0) return;
+    const previousIndex = randomIndex - 1;
+    setRandomIndex(previousIndex);
+    setSelectedId(randomHistory[previousIndex]);
+  };
+
+  const showNextRandom = () => {
+    if (randomIndex < randomHistory.length - 1) {
+      const nextIndex = randomIndex + 1;
+      setRandomIndex(nextIndex);
+      setSelectedId(randomHistory[nextIndex]);
+      return;
+    }
+
+    const nextId = getRandomId(selectedId);
+    if (nextId === null) return;
+    const nextHistory = [...randomHistory.slice(0, randomIndex + 1), nextId];
+    setRandomHistory(nextHistory);
+    setRandomIndex(nextHistory.length - 1);
+    setSelectedId(nextId);
+  };
+
+  const openMovie = (movieId) => {
+    setRandomHistory([]);
+    setRandomIndex(-1);
+    setSelectedId(movieId);
+  };
+
+  const closeMovie = () => {
+    setSelectedId(null);
+    setRandomHistory([]);
+    setRandomIndex(-1);
   };
 
   if (!catalogReady) {
@@ -451,9 +496,11 @@ export default function Home() {
           <span>MOVIE <b>CATALOG</b></span>
         </a>
         <nav className="desktopNav" aria-label={t.nav.collection}>
-          <button type="button" className={category === "all" ? "active" : ""} onClick={() => setCategory("all")}>{t.nav.collection}</button>
-          <button type="button" className={category === "movies" ? "active" : ""} onClick={() => setCategory("movies")}>{t.nav.movies}</button>
-          <button type="button" className={category === "series" ? "active" : ""} onClick={() => setCategory("series")}>{t.nav.series}</button>
+          {["all", ...categoryIds].map((id) => (
+            <button type="button" key={id} className={category === id ? "active" : ""} onClick={() => setCategory(id)}>
+              {t.categories[id]}
+            </button>
+          ))}
         </nav>
         <div className="headerActions">
           <span className={`syncBadge ${syncState}`} aria-live="polite">
@@ -472,59 +519,22 @@ export default function Home() {
 
       {syncState === "offline" && <div className="offlineBanner">{t.sync.offline}</div>}
 
-      <section className="hero" id="top">
-        <div className="heroBackdrop" />
-        <div className="heroGlow" />
-        <div className="heroContent">
-          <div className="eyebrow"><span /> {t.hero.eyebrow}</div>
-          <h1>{t.hero.title}<br /><em>{t.hero.accent}</em></h1>
-          <p>{t.hero.description}</p>
-          <div className="heroActions">
-            <a href="#catalog" className="primaryButton"><Icon name="grid" size={18} /> {t.hero.open}</a>
-            <button type="button" className="ghostButton" onClick={chooseRandom}><Icon name="shuffle" size={18} /> {t.hero.random}</button>
-          </div>
-          <div className="heroStats">
-            <div><strong>{movies.length}</strong><span>{t.hero.total}</span></div>
-            <i />
-            <div><strong>{watchedCount}</strong><span>{t.hero.watched}</span></div>
-            <i />
-            <div><strong>{favoriteCount}</strong><span>{t.hero.favorites}</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="categorySection" aria-labelledby="category-title">
-        <div className="sectionIntro">
-          <div><span className="sectionKicker">{t.categorySection.eyebrow}</span><h2 id="category-title">{t.categorySection.title}</h2></div>
-          <p>{t.categorySection.description}</p>
-        </div>
-        <div className="categoryGrid">
-          {categoryCards.map((item) => {
-            const count = movies.filter((movie) => movie.category === item.id).length;
-            return (
-              <button
-                type="button"
-                key={item.id}
-                className={category === item.id ? "categoryCard active" : "categoryCard"}
-                onClick={() => {
-                  setCategory(item.id);
-                  document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" });
-                }}
-              >
-                <img src={item.image} alt="" />
-                <span className="categoryOverlay" />
-                <span className="categoryCopy"><small>{count} {t.categorySection.items}</small><b>{t.categories[item.id]}</b></span>
-                <span className="categoryArrow"><Icon name="chevron" size={20} /></span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="catalogSection" id="catalog">
+      <section className="catalogSection" id="top">
         <div className="sectionIntro catalogIntro">
-          <div><span className="sectionKicker">{t.catalog.eyebrow}</span><h2>{t.categories[category]}</h2></div>
-          <span className="resultCount">{filtered.length} {t.catalog.result} {movies.length}</span>
+          <div>
+            <span className="sectionKicker">{t.catalog.eyebrow}</span>
+            <h1>{t.categories[category]}</h1>
+          </div>
+          <div className="catalogSummary">
+            <div className="catalogStats" aria-label={t.catalog.stats}>
+              <span><strong>{movies.length}</strong>{t.hero.total}</span>
+              <span><strong>{watchedCount}</strong>{t.hero.watched}</span>
+              <span><strong>{favoriteCount}</strong>{t.hero.favorites}</span>
+            </div>
+            <button type="button" className="catalogRandom" onClick={chooseRandom}>
+              <Icon name="shuffle" size={18} /> {t.nav.random}
+            </button>
+          </div>
         </div>
 
         <div className="toolbar">
@@ -533,11 +543,6 @@ export default function Home() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.catalog.search} />
             {query && <button type="button" onClick={() => setQuery("")} aria-label={t.catalog.reset}><Icon name="close" size={16} /></button>}
           </label>
-          <div className="categoryPills">
-            {["all", ...categoryCards.map((item) => item.id)].map((id) => (
-              <button type="button" key={id} className={category === id ? "active" : ""} onClick={() => setCategory(id)}>{t.categories[id]}</button>
-            ))}
-          </div>
           <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label={t.modal.status}>
             <option value="all">{t.catalog.allStatuses}</option>
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
@@ -554,6 +559,7 @@ export default function Home() {
             <button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid"><Icon name="grid" size={18} /></button>
             <button type="button" className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List"><Icon name="list" size={18} /></button>
           </div>
+          <span className="resultCount">{filtered.length} {t.catalog.result} {movies.length}</span>
         </div>
 
         {filtered.length ? (
@@ -564,7 +570,7 @@ export default function Home() {
                 movie={movie}
                 language={language}
                 labels={t}
-                onOpen={setSelectedId}
+                onOpen={openMovie}
                 onUpdate={updateProgress}
                 view={view}
               />
@@ -593,9 +599,21 @@ export default function Home() {
       </footer>
 
       {selected && (
-        <div className="modalBackdrop" role="presentation" onMouseDown={() => setSelectedId(null)}>
+        <div className="modalBackdrop" role="presentation" onMouseDown={closeMovie}>
+          {randomMode && (
+            <button
+              type="button"
+              className="randomModalNav randomModalPrevious"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={showPreviousRandom}
+              disabled={randomIndex <= 0}
+              aria-label={t.modal.previousRandom}
+            >
+              <Icon name="arrowLeft" size={24} />
+            </button>
+          )}
           <section className="movieModal" role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modalClose" onClick={() => setSelectedId(null)} aria-label={t.modal.close}><Icon name="close" size={22} /></button>
+            <button type="button" className="modalClose" onClick={closeMovie} aria-label={t.modal.close}><Icon name="close" size={22} /></button>
             <div className="modalPoster"><img src={selected.poster} alt={selected.title} /></div>
             <div className="modalInfo">
               <span className="modalCategory">{t.categories[selected.category]}</span>
@@ -638,6 +656,17 @@ export default function Home() {
               </div>
             </div>
           </section>
+          {randomMode && (
+            <button
+              type="button"
+              className="randomModalNav randomModalNext"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={showNextRandom}
+              aria-label={t.modal.nextRandom}
+            >
+              <Icon name="arrowRight" size={24} />
+            </button>
+          )}
         </div>
       )}
 

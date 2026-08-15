@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Movie Catalog — семейная коллекция",
+  title: "Movie Catalog",
   description: "Семейный каталог фильмов, сериалов, мультфильмов и документального кино.",
   applicationName: "Movie Catalog",
   robots: {
