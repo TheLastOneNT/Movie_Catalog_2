@@ -224,12 +224,13 @@ async function handleApi(request, env) {
     return json({ authenticated: false }, 200, { "set-cookie": sessionCookie("", request, 0) });
   }
 
-  if (!(await isAuthorized(request, env))) return json({ error: "Authentication required." }, 401);
   if (!env.DB) return json({ error: "The database is not configured." }, 503);
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
+
+  if (!(await isAuthorized(request, env))) return json({ error: "Authentication required." }, 401);
 
   if (url.pathname === "/api/export" && request.method === "GET") {
     return exportData(env);
@@ -260,4 +261,3 @@ export default {
     }
   },
 };
-

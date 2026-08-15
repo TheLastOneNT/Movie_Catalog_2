@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "movie-catalog-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "1a0f6d0e-9ff8-4a13-bdc9-a4f3ead5b05b",
       "migrations_dir": "migrations"
     }
   ],

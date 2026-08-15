@@ -66,7 +66,7 @@ function Stars({ value = 0, onChange, compact = false, label }) {
   );
 }
 
-function AccessScreen({ mode, language, onLanguageChange, onUnlock }) {
+function AccessScreen({ mode, language, onLanguageChange, onUnlock, onClose }) {
   const t = translations[language];
   const [accessKey, setAccessKey] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -82,13 +82,24 @@ function AccessScreen({ mode, language, onLanguageChange, onUnlock }) {
   };
 
   return (
-    <main className="accessPage">
+    <div className="accessPage" role={mode === "checking" ? undefined : "presentation"} onMouseDown={onClose}>
       <div className="accessBackdrop" />
-      <div className="accessLanguage" aria-label="Language">
+      <div className="accessLanguage" aria-label="Language" onMouseDown={(event) => event.stopPropagation()}>
         <button type="button" className={language === "ru" ? "active" : ""} onClick={() => onLanguageChange("ru")}>RU</button>
         <button type="button" className={language === "en" ? "active" : ""} onClick={() => onLanguageChange("en")}>EN</button>
       </div>
-      <section className="accessCard">
+      <section
+        className="accessCard"
+        role={mode === "checking" ? undefined : "dialog"}
+        aria-modal={mode === "checking" ? undefined : true}
+        aria-label={t.access.title}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {onClose && (
+          <button type="button" className="accessClose" onClick={onClose} aria-label={t.access.close}>
+            <Icon name="close" size={20} />
+          </button>
+        )}
         <span className="brandMark accessBrand"><Icon name="film" size={27} /></span>
         <span className="sectionKicker">{t.access.eyebrow}</span>
         {mode === "checking" ? (
@@ -118,10 +129,11 @@ function AccessScreen({ mode, language, onLanguageChange, onUnlock }) {
               </form>
             )}
             {error && <p className="formError" role="alert">{error}</p>}
+            {onClose && <button type="button" className="accessContinue" onClick={onClose}>{t.access.close}</button>}
           </>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -171,7 +183,9 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, view }) {
 
 export default function Home() {
   const [language, setLanguage] = useState("ru");
-  const [accessMode, setAccessMode] = useState("checking");
+  const [catalogReady, setCatalogReady] = useState(false);
+  const [authState, setAuthState] = useState("checking");
+  const [accessPromptOpen, setAccessPromptOpen] = useState(false);
   const [movies, setMovies] = useState([]);
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
@@ -182,6 +196,7 @@ export default function Home() {
   const [noteDraft, setNoteDraft] = useState("");
   const [syncState, setSyncState] = useState("synced");
   const requestQueue = useRef(Promise.resolve());
+  const pendingAction = useRef(null);
   const t = translations[language];
 
   const changeLanguage = (nextLanguage) => {
@@ -193,26 +208,23 @@ export default function Home() {
   const loadCatalog = useCallback(async () => {
     try {
       const response = await fetch("/api/catalog", { credentials: "same-origin" });
-      if (response.status === 401) {
-        setAccessMode("locked");
-        return false;
-      }
       if (!response.ok) throw new Error("Catalog request failed");
       const data = await response.json();
       setMovies(data.movies);
       window.localStorage.setItem("movie-catalog-cache-v1", JSON.stringify(data.movies));
       setSyncState("synced");
-      setAccessMode("ready");
+      setCatalogReady(true);
       return true;
     } catch {
       const cached = window.localStorage.getItem("movie-catalog-cache-v1");
       if (cached) {
         setMovies(JSON.parse(cached));
         setSyncState("offline");
-        setAccessMode("ready");
+        setCatalogReady(true);
         return true;
       }
-      setAccessMode("locked");
+      setSyncState("error");
+      setCatalogReady(true);
       return false;
     }
   }, []);
@@ -229,22 +241,16 @@ export default function Home() {
         const response = await fetch("/api/session", { credentials: "same-origin" });
         const session = await response.json();
         if (!session.configured) {
-          setAccessMode("setup");
+          setAuthState("setup");
         } else if (session.authenticated) {
-          await loadCatalog();
+          setAuthState("authenticated");
         } else {
-          setAccessMode("locked");
+          setAuthState("guest");
         }
       } catch {
-        const cached = window.localStorage.getItem("movie-catalog-cache-v1");
-        if (cached) {
-          setMovies(JSON.parse(cached));
-          setSyncState("offline");
-          setAccessMode("ready");
-        } else {
-          setAccessMode("locked");
-        }
+        setAuthState("guest");
       }
+      await loadCatalog();
     };
     initialize();
   }, [loadCatalog]);
@@ -255,16 +261,20 @@ export default function Home() {
   }, [selectedId]);
 
   useEffect(() => {
-    document.body.style.overflow = selectedId ? "hidden" : "";
+    document.body.style.overflow = selectedId || accessPromptOpen ? "hidden" : "";
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") setSelectedId(null);
+      if (event.key === "Escape") {
+        setSelectedId(null);
+        setAccessPromptOpen(false);
+        pendingAction.current = null;
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [selectedId]);
+  }, [accessPromptOpen, selectedId]);
 
   const unlock = async (accessKey) => {
     try {
@@ -276,7 +286,11 @@ export default function Home() {
       });
       const data = await response.json();
       if (!response.ok) return { ok: false, error: data.error };
-      await loadCatalog();
+      setAuthState("authenticated");
+      setAccessPromptOpen(false);
+      const action = pendingAction.current;
+      pendingAction.current = null;
+      if (action) await action();
       return { ok: true };
     } catch {
       return { ok: false, error: t.sync.error };
@@ -285,12 +299,24 @@ export default function Home() {
 
   const logout = async () => {
     await fetch("/api/session", { method: "DELETE", credentials: "same-origin" });
-    setSelectedId(null);
-    setMovies([]);
-    setAccessMode("locked");
+    setAuthState("guest");
+    setAccessPromptOpen(false);
+    pendingAction.current = null;
   };
 
-  const updateProgress = (movieId, patch) => {
+  const closeAccessPrompt = () => {
+    setAccessPromptOpen(false);
+    pendingAction.current = null;
+  };
+
+  const requireAccess = (action = null) => {
+    if (authState === "authenticated") return action?.();
+    pendingAction.current = action;
+    setAccessPromptOpen(true);
+    return undefined;
+  };
+
+  const performUpdateProgress = (movieId, patch) => {
     if (syncState === "offline") return;
     setMovies((current) => current.map((movie) => {
       if (movie.id !== movieId) return movie;
@@ -317,8 +343,10 @@ export default function Home() {
           body: JSON.stringify(patch),
         });
         if (response.status === 401) {
-          setAccessMode("locked");
-          throw new Error("Session expired");
+          setAuthState("guest");
+          pendingAction.current = () => performUpdateProgress(movieId, patch);
+          setAccessPromptOpen(true);
+          throw new Error("Authentication required");
         }
         if (!response.ok) throw new Error("Progress update failed");
         const data = await response.json();
@@ -333,12 +361,22 @@ export default function Home() {
       });
   };
 
-  const resetMovie = async (movieId) => {
+  const updateProgress = (movieId, patch) => {
+    requireAccess(() => performUpdateProgress(movieId, patch));
+  };
+
+  const performResetMovie = async (movieId) => {
     if (syncState === "offline") return;
     const response = await fetch(`/api/movies/${movieId}/progress`, {
       method: "DELETE",
       credentials: "same-origin",
     });
+    if (response.status === 401) {
+      setAuthState("guest");
+      pendingAction.current = () => performResetMovie(movieId);
+      setAccessPromptOpen(true);
+      return;
+    }
     if (response.ok) {
       const data = await response.json();
       setMovies((current) => current.map((movie) => movie.id === movieId
@@ -348,8 +386,18 @@ export default function Home() {
     }
   };
 
-  const exportBackup = async () => {
+  const resetMovie = (movieId) => {
+    requireAccess(() => performResetMovie(movieId));
+  };
+
+  const performExportBackup = async () => {
     const response = await fetch("/api/export", { credentials: "same-origin" });
+    if (response.status === 401) {
+      setAuthState("guest");
+      pendingAction.current = performExportBackup;
+      setAccessPromptOpen(true);
+      return;
+    }
     if (!response.ok) return;
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -358,6 +406,10 @@ export default function Home() {
     link.download = `movie-catalog-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportBackup = () => {
+    requireAccess(performExportBackup);
   };
 
   const filtered = useMemo(() => {
@@ -387,8 +439,8 @@ export default function Home() {
     if (pool.length) setSelectedId(pool[Math.floor(Math.random() * pool.length)].id);
   };
 
-  if (accessMode !== "ready") {
-    return <AccessScreen mode={accessMode} language={language} onLanguageChange={changeLanguage} onUnlock={unlock} />;
+  if (!catalogReady) {
+    return <AccessScreen mode="checking" language={language} onLanguageChange={changeLanguage} onUnlock={unlock} />;
   }
 
   return (
@@ -533,7 +585,10 @@ export default function Home() {
         <p>{movies.length} {t.footer.description}</p>
         <div className="footerActions">
           <button type="button" onClick={exportBackup}><Icon name="download" size={17} /> {t.footer.export}</button>
-          <button type="button" onClick={logout}><Icon name="logout" size={17} /> {t.nav.logout}</button>
+          <button type="button" onClick={authState === "authenticated" ? logout : () => requireAccess()}>
+            <Icon name={authState === "authenticated" ? "logout" : "lock"} size={17} />
+            {authState === "authenticated" ? t.nav.logout : t.nav.edit}
+          </button>
         </div>
       </footer>
 
@@ -584,6 +639,16 @@ export default function Home() {
             </div>
           </section>
         </div>
+      )}
+
+      {accessPromptOpen && (
+        <AccessScreen
+          mode={authState === "setup" ? "setup" : "locked"}
+          language={language}
+          onLanguageChange={changeLanguage}
+          onUnlock={unlock}
+          onClose={closeAccessPrompt}
+        />
       )}
     </main>
   );

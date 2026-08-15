@@ -1,6 +1,6 @@
 # Movie Catalog
 
-A private, bilingual family movie library with synchronized ratings, viewing status, favorites, viewing dates, watch history, and notes.
+A bilingual family movie library with a public catalog and synchronized ratings, viewing status, favorites, viewing dates, watch history, and notes.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ A private, bilingual family movie library with synchronized ratings, viewing sta
 - **API:** Cloudflare Worker
 - **Database:** Cloudflare D1 (SQLite)
 - **Hosting:** Cloudflare Workers Static Assets
-- **Access:** one shared household key stored as a secure, HTTP-only session cookie
+- **Access:** public read-only browsing; one shared household key enables writes through a secure, HTTP-only session cookie
 - **Cost target:** Cloudflare Free plan
 
 The published application does not depend on ChatGPT. GitHub remains the canonical source, and Cloudflare can automatically rebuild and deploy the site after each accepted change.
@@ -64,4 +64,3 @@ The footer includes a JSON export. Cloudflare D1 also supports point-in-time rec
 - Never commit `.dev.vars`, access keys, API tokens, or database credentials.
 - The shared key is transmitted only over HTTPS in production and becomes an HTTP-only session cookie.
 - Rotate any credential that has previously appeared in a public repository.
-
