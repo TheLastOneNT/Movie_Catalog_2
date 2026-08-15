@@ -14,9 +14,10 @@ export default function manifest() {
     theme_color: "#0b0b0d",
     icons: [
       {
-        src: "/film-reel.png",
+        src: "/app-icon-v2.png",
         sizes: "512x512",
         type: "image/png",
+        purpose: "any",
       },
     ],
   };
