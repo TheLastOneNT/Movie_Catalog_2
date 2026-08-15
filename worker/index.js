@@ -1,6 +1,9 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
+const MOVIE_CATEGORIES = new Set(["movies", "series", "cartoons", "documentaries"]);
+const POSTER_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_POSTER_BYTES = 1_500_000;
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -82,7 +85,7 @@ function mapMovie(row) {
     releaseYear: row.release_year,
     collectionOrder: row.collection_order,
     progress: {
-      status: row.status || "unwatched",
+      status: row.status === "watched" ? "watched" : "unwatched",
       rating: row.rating,
       isFavorite: Boolean(row.is_favorite),
       lastWatchedAt: row.last_watched_at,
@@ -95,7 +98,7 @@ function mapMovie(row) {
 
 function mapProgress(row) {
   return {
-    status: row?.status || "unwatched",
+    status: row?.status === "watched" ? "watched" : "unwatched",
     rating: row?.rating ?? null,
     isFavorite: Boolean(row?.is_favorite),
     lastWatchedAt: row?.last_watched_at || null,
@@ -126,16 +129,21 @@ async function listCatalog(env) {
   return result.results.map(mapMovie);
 }
 
-async function updateProgress(request, env, movieId) {
-  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
-  if (!movie) return json({ error: "Movie not found." }, 404);
+async function getCatalogMovie(env, movieId) {
+  const row = await env.DB.prepare(`
+    SELECT
+      m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
+      m.poster_path, m.release_year, m.collection_order,
+      p.status, p.rating, p.is_favorite, p.last_watched_at, p.watch_count,
+      p.notes, p.updated_at AS progress_updated_at
+    FROM movies m
+    LEFT JOIN movie_progress p ON p.movie_id = m.id
+    WHERE m.id = ?
+  `).bind(movieId).first();
+  return row ? mapMovie(row) : null;
+}
 
-  const currentRow = await getProgress(env, movieId);
-  const current = mapProgress(currentRow);
-  const input = await readJson(request);
-  const normalized = normalizeProgressPatch(input, current);
-  const now = new Date().toISOString();
-
+async function saveNormalizedProgress(env, movieId, normalized, now) {
   if (normalized.clearHistory) {
     await env.DB.prepare("DELETE FROM watch_history WHERE movie_id = ?").bind(movieId).run();
   } else if (normalized.addHistory) {
@@ -171,7 +179,127 @@ async function updateProgress(request, env, movieId) {
     now,
   ).run();
 
-  return json({ progress: mapProgress(await getProgress(env, movieId)) });
+  return mapProgress(await getProgress(env, movieId));
+}
+
+async function updateProgress(request, env, movieId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+
+  const currentRow = await getProgress(env, movieId);
+  const current = mapProgress(currentRow);
+  const input = await readJson(request);
+  const normalized = normalizeProgressPatch(input, current);
+  const now = new Date().toISOString();
+  return json({ progress: await saveNormalizedProgress(env, movieId, normalized, now) });
+}
+
+function optionalText(value, field, maxLength) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new ValidationError(`${field} must be a string.`);
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) throw new ValidationError(`${field} is too long.`);
+  return trimmed || null;
+}
+
+async function createMovie(request, env) {
+  const input = await readJson(request);
+  const title = optionalText(input.title, "Title", 160);
+  if (!title) throw new ValidationError("A title is required.");
+  if (!MOVIE_CATEGORIES.has(input.category)) throw new ValidationError("The movie category is invalid.");
+
+  const titleEn = optionalText(input.titleEn, "English title", 160);
+  const description = optionalText(input.description, "Description", 3000);
+  const releaseYear = input.releaseYear === null || input.releaseYear === "" || input.releaseYear === undefined
+    ? null
+    : Number(input.releaseYear);
+  if (releaseYear !== null && (!Number.isInteger(releaseYear) || releaseYear < 1888 || releaseYear > 2200)) {
+    throw new ValidationError("The release year is invalid.");
+  }
+
+  const nextOrder = await env.DB.prepare(
+    "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
+  ).first();
+  const insert = await env.DB.prepare(`
+    INSERT INTO movies (
+      category, title_ru, title_en, description_ru, description_en,
+      poster_path, release_year, collection_order
+    ) VALUES (?, ?, ?, ?, NULL, '/film-reel.png', ?, ?)
+  `).bind(input.category, title, titleEn, description, releaseYear, Number(nextOrder?.value || 1)).run();
+
+  const movieId = Number(insert.meta.last_row_id);
+  const progressInput = {
+    status: input.status === "watched" ? "watched" : "unwatched",
+    rating: input.rating ?? null,
+  };
+  if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
+  const normalized = normalizeProgressPatch(progressInput, {});
+  await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
+
+  return json({ movie: await getCatalogMovie(env, movieId) }, 201);
+}
+
+async function ensurePosterTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS movie_posters (
+      movie_id INTEGER PRIMARY KEY REFERENCES movies(id) ON DELETE CASCADE,
+      content_type TEXT NOT NULL,
+      image BLOB NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+}
+
+async function uploadPoster(request, env, movieId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+
+  const contentType = (request.headers.get("content-type") || "").split(";")[0].toLowerCase();
+  if (!POSTER_TYPES.has(contentType)) throw new ValidationError("The poster must be a JPEG, PNG, or WebP image.");
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (declaredLength > MAX_POSTER_BYTES) throw new ValidationError("The poster is too large.");
+  const image = await request.arrayBuffer();
+  if (!image.byteLength || image.byteLength > MAX_POSTER_BYTES) throw new ValidationError("The poster is too large.");
+
+  await ensurePosterTable(env);
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO movie_posters (movie_id, content_type, image, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(movie_id) DO UPDATE SET
+        content_type = excluded.content_type,
+        image = excluded.image,
+        updated_at = excluded.updated_at
+    `).bind(movieId, contentType, image, new Date().toISOString()),
+    env.DB.prepare("UPDATE movies SET poster_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .bind(`/api/posters/${movieId}`, movieId),
+  ]);
+
+  return json({ poster: `/api/posters/${movieId}` });
+}
+
+async function getPoster(env, movieId) {
+  const row = await env.DB.prepare(
+    "SELECT content_type, image, updated_at FROM movie_posters WHERE movie_id = ?",
+  ).bind(movieId).first();
+  if (!row) return json({ error: "Poster not found." }, 404);
+  const bytes = row.image instanceof ArrayBuffer ? row.image : Uint8Array.from(row.image);
+  return new Response(bytes, {
+    headers: {
+      "content-type": row.content_type,
+      "cache-control": "public, max-age=300",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function getWatchHistory(env, movieId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+  const result = await env.DB.prepare(
+    "SELECT watched_at AS watchedAt FROM watch_history WHERE movie_id = ? ORDER BY watched_at DESC",
+  ).bind(movieId).all();
+  return json({ dates: result.results.map((row) => row.watchedAt) });
 }
 
 async function resetProgress(env, movieId) {
@@ -230,10 +358,29 @@ async function handleApi(request, env) {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
 
+  const historyMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/history$/);
+  if (historyMatch && request.method === "GET") {
+    return getWatchHistory(env, Number(historyMatch[1]));
+  }
+
+  const posterMatch = url.pathname.match(/^\/api\/posters\/(\d+)$/);
+  if (posterMatch && request.method === "GET") {
+    return getPoster(env, Number(posterMatch[1]));
+  }
+
   if (!(await isAuthorized(request, env))) return json({ error: "Authentication required." }, 401);
 
   if (url.pathname === "/api/export" && request.method === "GET") {
     return exportData(env);
+  }
+
+  if (url.pathname === "/api/movies" && request.method === "POST") {
+    return createMovie(request, env);
+  }
+
+  const uploadPosterMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/poster$/);
+  if (uploadPosterMatch && request.method === "POST") {
+    return uploadPoster(request, env, Number(uploadPosterMatch[1]));
   }
 
   const progressMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/progress$/);

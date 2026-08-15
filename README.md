@@ -11,6 +11,7 @@ A bilingual family movie library with a public catalog and synchronized ratings,
 - **Hosting:** Cloudflare Workers Static Assets
 - **Access:** public read-only browsing; one shared household key enables writes through a secure, HTTP-only session cookie
 - **Cost target:** Cloudflare Free plan
+- **Installability:** progressive web app metadata for adding the catalog to an iPhone or Android home screen without an app store
 
 The published application does not depend on ChatGPT. GitHub remains the canonical source, and Cloudflare can automatically rebuild and deploy the site after each accepted change.
 
@@ -52,6 +53,9 @@ The free `workers.dev` address works immediately. A custom domain can be connect
 - `movies`: Russian and English metadata, category, poster, release year, and collection order.
 - `movie_progress`: shared household status, 1–5 rating, favorite flag, last viewing date, watch count, and notes.
 - `watch_history`: a durable record of individual viewing dates.
+- `movie_posters`: phone-uploaded poster images, resized in the browser before being stored in D1.
+
+New titles can be added from the catalog header after entering the household key. Poster files are converted to WebP and reduced before upload, and the Worker enforces a 1.5 MB limit per image.
 
 Schema changes are versioned in `migrations/`. Never edit an already-applied migration; add a new migration instead.
 

@@ -31,7 +31,10 @@ test("rejects ratings outside the supported range", () => {
   assert.throws(() => normalizeProgressPatch({ rating: 6 }, {}, fixedNow), ValidationError);
 });
 
+test("rejects legacy viewing statuses", () => {
+  assert.throws(() => normalizeProgressPatch({ status: "planned" }, {}, fixedNow), ValidationError);
+});
+
 test("rejects oversized notes", () => {
   assert.throws(() => normalizeProgressPatch({ notes: "x".repeat(5001) }, {}, fixedNow), ValidationError);
 });
-

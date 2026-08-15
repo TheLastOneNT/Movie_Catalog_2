@@ -1,4 +1,4 @@
-export const MOVIE_STATUSES = ["unwatched", "planned", "watching", "watched", "dropped"];
+export const MOVIE_STATUSES = ["unwatched", "watched"];
 
 const STATUS_SET = new Set(MOVIE_STATUSES);
 
@@ -81,4 +81,3 @@ export function normalizeProgressPatch(input, current = {}, now = new Date()) {
     clearHistory: next.status === "unwatched",
   };
 }
-

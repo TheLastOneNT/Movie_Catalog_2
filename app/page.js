@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translations } from "@/lib/i18n";
 import { matchesMovieQuery } from "@/lib/search";
+import { randomizeMovies, sortOldestWatched } from "@/lib/catalog";
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
-const statusOrder = ["unwatched", "planned", "watching", "watched", "dropped"];
+const statusOrder = ["unwatched", "watched"];
 
 function Icon({ name, size = 20, filled = false }) {
   const props = {
@@ -38,6 +39,11 @@ function Icon({ name, size = 20, filled = false }) {
     lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
     logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" /></>,
+    alert: <><path d="M12 8v5" /><path d="M12 17h.01" /><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z" /></>,
+    plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></>,
+    upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" /></>,
+    share: <><path d="M12 3v12" /><path d="m8 7 4-4 4 4" /><path d="M5 11v9h14v-9" /></>,
   };
 
   return <svg {...props}>{paths[name]}</svg>;
@@ -157,14 +163,14 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, view }) {
         </button>
         <button
           type="button"
-          className={watched ? "watchedButton active" : "watchedButton"}
+          className={watched ? "watchedButton watched" : "watchedButton unwatched"}
           onClick={(event) => {
             event.stopPropagation();
             onUpdate(movie.id, { status: watched ? "unwatched" : "watched" });
           }}
           aria-label={watched ? labels.catalog.watched : labels.catalog.unwatched}
         >
-          <Icon name="check" size={17} />
+          <Icon name={watched ? "check" : "alert"} size={watched ? 17 : 16} />
         </button>
         <div className="posterShade" />
       </div>
@@ -179,6 +185,161 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, view }) {
   );
 }
 
+async function optimizePoster(file) {
+  if (!file) return null;
+  if (!file.type.startsWith("image/")) throw new Error("Unsupported image");
+
+  const source = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = reject;
+      element.src = source;
+    });
+    const scale = Math.min(1, 1000 / image.naturalWidth, 1500 / image.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.82, 0.72, 0.62]) {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (blob && blob.size <= 1_450_000) return blob;
+    }
+    throw new Error("Poster is too large");
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
+
+function AddMovieModal({ labels, onClose, onCreate }) {
+  const initialForm = {
+    title: "",
+    titleEn: "",
+    category: "movies",
+    releaseYear: "",
+    status: "unwatched",
+    rating: null,
+    lastWatchedAt: "",
+    description: "",
+  };
+  const [form, setForm] = useState(initialForm);
+  const [poster, setPoster] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!poster) {
+      setPreview("");
+      return undefined;
+    }
+    const url = URL.createObjectURL(poster);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [poster]);
+
+  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const submit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      await onCreate(form, poster);
+    } catch (submitError) {
+      setError(submitError.message || labels.addMovie.error);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modalBackdrop formBackdrop" role="presentation" onMouseDown={onClose}>
+      <section className="addMovieModal" role="dialog" aria-modal="true" aria-label={labels.addMovie.title} onMouseDown={(event) => event.stopPropagation()}>
+        <button type="button" className="modalClose" onClick={onClose} aria-label={labels.addMovie.close}><Icon name="close" size={22} /></button>
+        <div className="addMovieHeading">
+          <span className="sectionKicker">{labels.addMovie.eyebrow}</span>
+          <h2>{labels.addMovie.title}</h2>
+          <p>{labels.addMovie.description}</p>
+        </div>
+        <form className="addMovieForm" onSubmit={submit}>
+          <div className="addMovieFields">
+            <label className="wideField">
+              <span>{labels.addMovie.name}</span>
+              <input required maxLength={160} value={form.title} onChange={(event) => update("title", event.target.value)} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+            </label>
+            <label>
+              <span>{labels.addMovie.englishName}</span>
+              <input maxLength={160} value={form.titleEn} onChange={(event) => update("titleEn", event.target.value)} placeholder={labels.addMovie.englishNamePlaceholder} />
+            </label>
+            <label>
+              <span>{labels.addMovie.category}</span>
+              <select value={form.category} onChange={(event) => update("category", event.target.value)}>
+                {categoryIds.map((id) => <option key={id} value={id}>{labels.categories[id]}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>{labels.addMovie.releaseYear}</span>
+              <input type="number" inputMode="numeric" min="1888" max="2200" value={form.releaseYear} onChange={(event) => update("releaseYear", event.target.value)} placeholder="2026" />
+            </label>
+            <label>
+              <span>{labels.addMovie.status}</span>
+              <select value={form.status} onChange={(event) => update("status", event.target.value)}>
+                {statusOrder.map((item) => <option key={item} value={item}>{labels.catalog[item]}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>{labels.addMovie.watchedAt}</span>
+              <input type="date" disabled={form.status !== "watched"} value={form.lastWatchedAt} onChange={(event) => update("lastWatchedAt", event.target.value)} />
+            </label>
+            <div className="addRating wideField">
+              <span>{labels.addMovie.rating}</span>
+              <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
+            </div>
+            <label className="wideField">
+              <span>{labels.addMovie.descriptionLabel}</span>
+              <textarea maxLength={3000} value={form.description} onChange={(event) => update("description", event.target.value)} placeholder={labels.addMovie.descriptionPlaceholder} />
+            </label>
+          </div>
+
+          <label className={preview ? "posterUpload hasPreview" : "posterUpload"}>
+            {preview ? <img src={preview} alt="" /> : <Icon name="upload" size={28} />}
+            <strong>{labels.addMovie.choosePoster}</strong>
+            <small>{labels.addMovie.posterHint}</small>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setPoster(event.target.files?.[0] || null)} />
+          </label>
+
+          {error && <p className="formError" role="alert">{error}</p>}
+          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim()}>
+            {submitting ? <span className="spinner small" /> : <Icon name="plus" size={18} />}
+            {submitting ? labels.addMovie.submitting : labels.addMovie.submit}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function InstallGuide({ labels, onClose }) {
+  return (
+    <div className="modalBackdrop guideBackdrop" role="presentation" onMouseDown={onClose}>
+      <section className="installGuide" role="dialog" aria-modal="true" aria-label={labels.install.title} onMouseDown={(event) => event.stopPropagation()}>
+        <button type="button" className="modalClose" onClick={onClose} aria-label={labels.install.close}><Icon name="close" size={22} /></button>
+        <span className="brandMark installIcon"><Icon name="share" size={24} /></span>
+        <span className="sectionKicker">{labels.install.eyebrow}</span>
+        <h2>{labels.install.title}</h2>
+        <p>{labels.install.description}</p>
+        <ol>
+          <li>{labels.install.stepOne}</li>
+          <li>{labels.install.stepTwo}</li>
+          <li>{labels.install.stepThree}</li>
+        </ol>
+        <button type="button" className="primaryButton" onClick={onClose}>{labels.install.close}</button>
+      </section>
+    </div>
+  );
+}
+
 export default function Home() {
   const [language, setLanguage] = useState("ru");
   const [catalogReady, setCatalogReady] = useState(false);
@@ -188,13 +349,19 @@ export default function Home() {
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
-  const [sort, setSort] = useState("collection");
+  const [sort, setSort] = useState("random");
+  const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
   const [randomHistory, setRandomHistory] = useState([]);
   const [randomIndex, setRandomIndex] = useState(-1);
   const [noteDraft, setNoteDraft] = useState("");
   const [syncState, setSyncState] = useState("synced");
+  const [addMovieOpen, setAddMovieOpen] = useState(false);
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyDates, setHistoryDates] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const requestQueue = useRef(Promise.resolve());
   const pendingAction = useRef(null);
   const t = translations[language];
@@ -230,6 +397,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
     const savedLanguage = window.localStorage.getItem("movie-catalog-language");
     if (savedLanguage === "en") {
       setLanguage("en");
@@ -258,16 +426,21 @@ export default function Home() {
   useEffect(() => {
     const selected = movies.find((movie) => movie.id === selectedId);
     setNoteDraft(selected?.progress.notes || "");
+    setHistoryOpen(false);
+    setHistoryDates([]);
   }, [selectedId]);
 
   useEffect(() => {
-    document.body.style.overflow = selectedId || accessPromptOpen ? "hidden" : "";
+    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen;
+    document.body.style.overflow = overlayOpen ? "hidden" : "";
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
         setSelectedId(null);
         setRandomHistory([]);
         setRandomIndex(-1);
         setAccessPromptOpen(false);
+        setAddMovieOpen(false);
+        setInstallGuideOpen(false);
         pendingAction.current = null;
       }
     };
@@ -276,7 +449,7 @@ export default function Home() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accessPromptOpen, selectedId]);
+  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId]);
 
   const unlock = async (accessKey) => {
     try {
@@ -355,6 +528,10 @@ export default function Home() {
         setMovies((current) => current.map((movie) => movie.id === movieId
           ? { ...movie, progress: data.progress }
           : movie));
+        if (patch.status || Object.prototype.hasOwnProperty.call(patch, "lastWatchedAt")) {
+          setHistoryOpen(false);
+          setHistoryDates([]);
+        }
         setSyncState("synced");
       })
       .catch(async () => {
@@ -414,6 +591,68 @@ export default function Home() {
     requireAccess(performExportBackup);
   };
 
+  const selectCategory = (nextCategory) => {
+    setCategory(nextCategory);
+    setSort("random");
+    setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openAddMovie = () => {
+    requireAccess(() => setAddMovieOpen(true));
+  };
+
+  const createMovie = async (form, posterFile) => {
+    const optimizedPoster = posterFile ? await optimizePoster(posterFile) : null;
+    const response = await fetch("/api/movies", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        rating: form.rating || null,
+        releaseYear: form.releaseYear || null,
+        lastWatchedAt: form.status === "watched" ? form.lastWatchedAt || null : null,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t.addMovie.error);
+
+    if (optimizedPoster) {
+      const posterResponse = await fetch(`/api/movies/${data.movie.id}/poster`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": optimizedPoster.type || "image/webp" },
+        body: optimizedPoster,
+      });
+      if (!posterResponse.ok) setSyncState("error");
+    }
+
+    await loadCatalog();
+    setAddMovieOpen(false);
+    setCategory(form.category);
+    setSort("random");
+    setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
+  };
+
+  const toggleHistory = async () => {
+    if (historyOpen) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`/api/movies/${selectedId}/history`, { credentials: "same-origin" });
+      const data = await response.json();
+      setHistoryDates(response.ok ? data.dates : []);
+    } catch {
+      setHistoryDates([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
@@ -424,11 +663,13 @@ export default function Home() {
       return true;
     });
 
+    if (sort === "random") result = randomizeMovies(result, shuffleSeed);
     if (sort === "title") result = [...result].sort((a, b) => a.title.localeCompare(b.title, t.locale));
     if (sort === "rating") result = [...result].sort((a, b) => (b.progress.rating || 0) - (a.progress.rating || 0));
     if (sort === "recent") result = [...result].sort((a, b) => (b.progress.lastWatchedAt || "").localeCompare(a.progress.lastWatchedAt || ""));
+    if (sort === "oldest") result = sortOldestWatched(result);
     return result;
-  }, [category, language, movies, query, sort, status, t.locale]);
+  }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const favoriteCount = movies.filter((movie) => movie.progress.isFavorite).length;
@@ -497,7 +738,7 @@ export default function Home() {
         </a>
         <nav className="desktopNav" aria-label={t.nav.collection}>
           {["all", ...categoryIds].map((id) => (
-            <button type="button" key={id} className={category === id ? "active" : ""} onClick={() => setCategory(id)}>
+            <button type="button" key={id} className={category === id ? "active" : ""} onClick={() => selectCategory(id)}>
               {t.categories[id]}
             </button>
           ))}
@@ -511,6 +752,9 @@ export default function Home() {
             <button type="button" className={language === "ru" ? "active" : ""} onClick={() => changeLanguage("ru")}>RU</button>
             <button type="button" className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")}>EN</button>
           </div>
+          <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
+            <Icon name="plus" size={18} /><span>{t.nav.add}</span>
+          </button>
           <button type="button" className="randomHeader" onClick={chooseRandom} aria-label={t.nav.random}>
             <Icon name="shuffle" size={18} /><span>{t.nav.random}</span>
           </button>
@@ -550,10 +794,12 @@ export default function Home() {
             <option value="favorites">{t.catalog.favorites}</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
+            <option value="random">{t.catalog.randomOrder}</option>
             <option value="collection">{t.catalog.collectionOrder}</option>
             <option value="title">{t.catalog.titleOrder}</option>
             <option value="rating">{t.catalog.ratingOrder}</option>
             <option value="recent">{t.catalog.recentOrder}</option>
+            <option value="oldest">{t.catalog.oldestOrder}</option>
           </select>
           <div className="viewSwitch" aria-label={t.nav.collection}>
             <button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid"><Icon name="grid" size={18} /></button>
@@ -581,7 +827,7 @@ export default function Home() {
             <Icon name="film" size={30} />
             <h3>{t.catalog.emptyTitle}</h3>
             <p>{t.catalog.emptyText}</p>
-            <button type="button" onClick={() => { setQuery(""); setCategory("all"); setStatus("all"); }}>{t.catalog.reset}</button>
+            <button type="button" onClick={() => { setQuery(""); selectCategory("all"); setStatus("all"); }}>{t.catalog.reset}</button>
           </div>
         )}
       </section>
@@ -590,6 +836,7 @@ export default function Home() {
         <div className="brand"><span className="brandMark"><Icon name="film" size={18} /></span><span>MOVIE <b>CATALOG</b></span></div>
         <p>{movies.length} {t.footer.description}</p>
         <div className="footerActions">
+          <button type="button" onClick={() => setInstallGuideOpen(true)}><Icon name="share" size={17} /> {t.footer.homeScreen}</button>
           <button type="button" onClick={exportBackup}><Icon name="download" size={17} /> {t.footer.export}</button>
           <button type="button" onClick={authState === "authenticated" ? logout : () => requireAccess()}>
             <Icon name={authState === "authenticated" ? "logout" : "lock"} size={17} />
@@ -612,7 +859,7 @@ export default function Home() {
               <Icon name="arrowLeft" size={24} />
             </button>
           )}
-          <section className="movieModal" role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => event.stopPropagation()}>
+          <section className={randomMode ? "movieModal randomMode" : "movieModal"} role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => event.stopPropagation()}>
             <button type="button" className="modalClose" onClick={closeMovie} aria-label={t.modal.close}><Icon name="close" size={22} /></button>
             <div className="modalPoster"><img src={selected.poster} alt={selected.title} /></div>
             <div className="modalInfo">
@@ -644,7 +891,23 @@ export default function Home() {
                 </label>
               </div>
 
-              <div className="watchCount"><span>{t.modal.watches}</span><strong>{selected.progress.watchCount || 0}</strong></div>
+              <div className="watchCount">
+                <span>{t.modal.watches}</span>
+                <div>
+                  <strong>{selected.progress.watchCount || 0}</strong>
+                  <button type="button" className="historyInfo" onClick={toggleHistory} aria-label={t.modal.showHistory} aria-expanded={historyOpen}>
+                    <Icon name="info" size={18} />
+                  </button>
+                </div>
+              </div>
+              {historyOpen && (
+                <div className="historyPanel">
+                  <span>{t.modal.history}</span>
+                  {historyLoading ? <p>{t.modal.historyLoading}</p> : historyDates.length ? (
+                    <ul>{historyDates.map((date) => <li key={date}>{new Intl.DateTimeFormat(t.locale, { day: "numeric", month: "long", year: "numeric" }).format(new Date(date))}</li>)}</ul>
+                  ) : <p>{t.modal.historyEmpty}</p>}
+                </div>
+              )}
 
               <label className="notesField">
                 <span>{t.modal.notes}</span>
@@ -679,6 +942,12 @@ export default function Home() {
           onClose={closeAccessPrompt}
         />
       )}
+
+      {addMovieOpen && (
+        <AddMovieModal labels={t} onClose={() => setAddMovieOpen(false)} onCreate={createMovie} />
+      )}
+
+      {installGuideOpen && <InstallGuide labels={t} onClose={() => setInstallGuideOpen(false)} />}
     </main>
   );
 }
