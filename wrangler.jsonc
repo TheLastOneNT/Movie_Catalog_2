@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "movie-catalog-nt",
+  "name": "movies",
   "main": "worker/index.js",
   "compatibility_date": "2026-08-15",
   "assets": {
@@ -21,4 +21,3 @@
     "enabled": true
   }
 }
-
