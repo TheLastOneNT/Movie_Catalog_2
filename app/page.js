@@ -327,20 +327,20 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.releaseYear}</span>
               <input type="number" inputMode="numeric" min="1888" max="2200" value={form.releaseYear} onChange={(event) => update("releaseYear", event.target.value)} placeholder="2026" />
             </label>
-            <label>
+            {!initialMovie && <label>
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
                 {statusOrder.map((item) => <option key={item} value={item}>{labels.catalog[item]}</option>)}
               </select>
-            </label>
-            <label>
+            </label>}
+            {!initialMovie && <label>
               <span>{labels.addMovie.watchedAt}</span>
               <input type="date" disabled={form.status !== "watched"} value={form.lastWatchedAt} onChange={(event) => update("lastWatchedAt", event.target.value)} />
-            </label>
-            <div className="addRating wideField">
+            </label>}
+            {!initialMovie && <div className="addRating wideField">
               <span>{labels.addMovie.rating}</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
-            </div>
+            </div>}
             <label className="wideField">
               <span>{labels.addMovie.descriptionLabel}</span>
               <textarea maxLength={3000} value={form.description} onChange={(event) => update("description", event.target.value)} placeholder={labels.addMovie.descriptionPlaceholder} />
@@ -573,9 +573,9 @@ export default function Home() {
   };
 
 
-  const updateMember = (movieId, patch) => {
+  const updateMember = (movieId, patch, selectedMember = activeMember) => {
     if (syncState === "offline") return;
-    const memberId = activeMember;
+    const memberId = selectedMember;
     setMovies((current) => current.map((movie) => movie.id !== movieId ? movie : ({
       ...movie, members: { ...movie.members, [memberId]: { ...personalFor(movie, memberId), ...patch } },
     })));
@@ -1069,9 +1069,7 @@ export default function Home() {
                 {profiles.map((person) => <div className="familyRatingRow" key={person.id}>
                   <strong>{person.name}</strong>
                   <Stars value={personalFor(selected, person.id).rating || 0} onChange={(rating) => {
-                    const previous = activeMember;
-                    if (person.id === previous) updateMember(selected.id, { rating });
-                    else { setActiveMember(person.id); window.localStorage.setItem("movie-catalog-member", String(person.id)); }
+                    updateMember(selected.id, { rating }, person.id);
                   }} label={person.name} />
                 </div>)}
                 {selected.progress.rating ? <small>{t.family.legacyRating}: {selected.progress.rating}/5</small> : null}
@@ -1108,8 +1106,9 @@ export default function Home() {
                 </div>
               )}
 
+              {selected.progress.notes && <p className="legacyNotes">{t.family.legacyNotes}: {selected.progress.notes}</p>}
               <label className="notesField">
-                <span>{t.modal.notes}</span>
+                <span>{t.modal.notes} — {activeName}</span>
                 <textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder={t.modal.notesPlaceholder} />
               </label>
               <div className="modalActions">

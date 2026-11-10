@@ -68,3 +68,13 @@ The footer includes a JSON export. Cloudflare D1 also supports point-in-time rec
 - Never commit `.dev.vars`, access keys, API tokens, or database credentials.
 - The shared key is transmitted only over HTTPS in production and becomes an HTTP-only session cookie.
 - Rotate any credential that has previously appeared in a public repository.
+
+## Family edition v3 — deployment checklist
+
+Family profiles have independent ratings, favorites and notes. Watching events can be attributed to either or both. **Legacy watch records are preserved, not guessed.**
+
+**DO NOT MERGE WITHOUT THE DB MIGRATION.** First export JSON and create a separate full Cloudflare D1 recovery point (including uploaded poster BLOBs). Apply additive `migrations/0003_family_profiles.sql` with `npm run db:migrate:remote` before deploying the new Worker. The catalog now requires the existing household `ACCESS_KEY` to read or write.
+
+On iPhone: open the deployed site in Safari, tap Share → Add to Home Screen. A service worker caches public app assets for offline reopening, but not private API data. Browser local storage may keep an offline copy of the catalog on an authenticated device; clear website data if removing access.
+
+**Important:** the JSON export does not contain the original uploaded poster BLOBs and currently has no built-in import flow. Keep Cloudflare D1 recovery as a full backup.
