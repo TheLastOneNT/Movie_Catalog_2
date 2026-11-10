@@ -357,7 +357,7 @@ function assertMemberId(value) {
 }
 
 function validateWatchDate(value) {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new ValidationError("Use YYYY-MM-DD for the viewing date.");
   }
   const date = new Date(value + "T12:00:00.000Z");
@@ -535,15 +535,15 @@ async function handleApi(request, env) {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
   if (url.pathname === "/api/profiles" && request.method === "GET") return json({ profiles: await listProfiles(env) });
-  const profileMatch = url.pathname.match(/^\\/api\\/profiles\\/(\\d+)$/);
+  const profileMatch = url.pathname.match(/^\/api\/profiles\/(\d+)$/);
   if (profileMatch && request.method === "PUT") return updateProfile(request, env, assertMemberId(profileMatch[1]));
 
-  const personalMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/member\\/(\\d+)$/);
+  const personalMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/member\/(\d+)$/);
   if (personalMatch && request.method === "PATCH") return updateMemberProgress(request, env, Number(personalMatch[1]), assertMemberId(personalMatch[2]));
 
-  const watchesMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/watches$/);
+  const watchesMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/watches$/);
   if (watchesMatch && request.method === "POST") return addViewingEvent(request, env, Number(watchesMatch[1]));
-  const watchEventMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/watches\\/(\\d+)$/);
+  const watchEventMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/watches\/(\d+)$/);
   if (watchEventMatch && request.method === "DELETE") return deleteViewingEvent(env, Number(watchEventMatch[1]), Number(watchEventMatch[2]));
 
   const historyMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/history$/);
@@ -563,7 +563,7 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/movies" && request.method === "POST") {
     return createMovie(request, env);
   }
-  const movieMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)$/);
+  const movieMatch = url.pathname.match(/^\/api\/movies\/(\d+)$/);
   if (movieMatch && request.method === "PUT") return editMovie(request, env, Number(movieMatch[1]));
   if (movieMatch && request.method === "DELETE") return deleteMovie(env, Number(movieMatch[1]));
 
