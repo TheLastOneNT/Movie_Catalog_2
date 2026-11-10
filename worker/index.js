@@ -115,7 +115,8 @@ async function getProgress(env, movieId) {
 }
 
 async function listCatalog(env) {
-  const result = await env.DB.prepare(`
+  const [result, memberRows] = await Promise.all([
+    env.DB.prepare(`
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
       m.poster_path, m.release_year, m.collection_order,
@@ -124,9 +125,18 @@ async function listCatalog(env) {
     FROM movies m
     LEFT JOIN movie_progress p ON p.movie_id = m.id
     ORDER BY m.collection_order ASC
-  `).all();
+  `).all(),
+    env.DB.prepare("SELECT movie_id, member_id, rating, is_favorite, notes FROM member_progress").all(),
+  ]);
 
-  return result.results.map(mapMovie);
+  const membersByMovie = new Map();
+  for (const row of memberRows.results) {
+    if (!membersByMovie.has(row.movie_id)) membersByMovie.set(row.movie_id, {});
+    membersByMovie.get(row.movie_id)[row.member_id] = {
+      rating: row.rating, isFavorite: Boolean(row.is_favorite), notes: row.notes || "",
+    };
+  }
+  return result.results.map((row) => ({ ...mapMovie(row), members: membersByMovie.get(row.id) || {} }));
 }
 
 async function getCatalogMovie(env, movieId) {
@@ -140,7 +150,13 @@ async function getCatalogMovie(env, movieId) {
     LEFT JOIN movie_progress p ON p.movie_id = m.id
     WHERE m.id = ?
   `).bind(movieId).first();
-  return row ? mapMovie(row) : null;
+  if (!row) return null;
+  const members = await env.DB.prepare(
+    "SELECT member_id, rating, is_favorite, notes FROM member_progress WHERE movie_id = ?",
+  ).bind(movieId).all();
+  return { ...mapMovie(row), members: Object.fromEntries(members.results.map((entry) => [entry.member_id, {
+    rating: entry.rating, isFavorite: Boolean(entry.is_favorite), notes: entry.notes || "",
+  }])) };
 }
 
 async function saveNormalizedProgress(env, movieId, normalized, now) {
@@ -189,6 +205,9 @@ async function updateProgress(request, env, movieId) {
   const currentRow = await getProgress(env, movieId);
   const current = mapProgress(currentRow);
   const input = await readJson(request);
+  if (input.status === "unwatched" && current.watchCount > 0) {
+    throw new ValidationError("Remove viewing dates individually; changing a status cannot erase history.");
+  }
   const normalized = normalizeProgressPatch(input, current);
   const now = new Date().toISOString();
   return json({ progress: await saveNormalizedProgress(env, movieId, normalized, now) });
@@ -296,10 +315,8 @@ async function getPoster(env, movieId) {
 async function getWatchHistory(env, movieId) {
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
-  const result = await env.DB.prepare(
-    "SELECT watched_at AS watchedAt FROM watch_history WHERE movie_id = ? ORDER BY watched_at DESC",
-  ).bind(movieId).all();
-  return json({ dates: result.results.map((row) => row.watchedAt) });
+  const events = await listViewingEvents(env, movieId);
+  return json({ dates: events.map((event) => event.watchedAt), events });
 }
 
 async function resetProgress(env, movieId) {
@@ -320,11 +337,168 @@ async function exportData(env) {
     ).all(),
   ]);
   return json({
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     movies: catalog,
+    profiles: await listProfiles(env),
     watchHistory: history.results,
+    watchAttendance: (await env.DB.prepare("SELECT watch_id AS watchId, member_id AS memberId FROM watch_attendance").all()).results,
+    notice: "Uploaded poster BLOBs are not included. Keep a D1 snapshot for full disaster recovery.",
   });
+}
+
+
+const MEMBER_IDS = new Set([1, 2]);
+
+function assertMemberId(value) {
+  const id = Number(value);
+  if (!MEMBER_IDS.has(id)) throw new ValidationError("Invalid family profile.");
+  return id;
+}
+
+function validateWatchDate(value) {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+    throw new ValidationError("Use YYYY-MM-DD for the viewing date.");
+  }
+  const date = new Date(value + "T12:00:00.000Z");
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new ValidationError("Invalid viewing date.");
+  }
+  if (date.getTime() > Date.now() + 86_400_000) throw new ValidationError("Future viewing dates are not allowed.");
+  return date.toISOString();
+}
+
+async function listProfiles(env) {
+  const result = await env.DB.prepare("SELECT id, display_name AS name FROM family_profiles ORDER BY id").all();
+  return result.results;
+}
+
+async function updateProfile(request, env, memberId) {
+  const body = await readJson(request);
+  if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 32) {
+    throw new ValidationError("Name must contain 1–32 characters.");
+  }
+  await env.DB.prepare("UPDATE family_profiles SET display_name = ? WHERE id = ?")
+    .bind(body.name.trim(), memberId).run();
+  return json({ profiles: await listProfiles(env) });
+}
+
+async function updateMemberProgress(request, env, movieId, memberId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+  const input = await readJson(request);
+  const permitted = new Set(["rating", "isFavorite", "notes"]);
+  if (!input || typeof input !== "object" || Array.isArray(input)
+      || Object.keys(input).some((key) => !permitted.has(key))) {
+    throw new ValidationError("Invalid profile update.");
+  }
+  if ("rating" in input && input.rating !== null
+      && (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)) {
+    throw new ValidationError("Rating must be 1–5 or null.");
+  }
+  if ("isFavorite" in input && typeof input.isFavorite !== "boolean") {
+    throw new ValidationError("Favorite must be true or false.");
+  }
+  if ("notes" in input && (typeof input.notes !== "string" || input.notes.length > 5000)) {
+    throw new ValidationError("Notes must be under 5,000 characters.");
+  }
+  const old = await env.DB.prepare(
+    "SELECT rating, is_favorite, notes FROM member_progress WHERE movie_id = ? AND member_id = ?",
+  ).bind(movieId, memberId).first();
+  const next = {
+    rating: "rating" in input ? input.rating : (old?.rating ?? null),
+    isFavorite: "isFavorite" in input ? input.isFavorite : Boolean(old?.is_favorite),
+    notes: "notes" in input ? input.notes : (old?.notes || ""),
+  };
+  await env.DB.prepare(`
+    INSERT INTO member_progress (movie_id, member_id, rating, is_favorite, notes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(movie_id, member_id) DO UPDATE SET
+      rating = excluded.rating, is_favorite = excluded.is_favorite,
+      notes = excluded.notes, updated_at = excluded.updated_at
+  `).bind(movieId, memberId, next.rating, next.isFavorite ? 1 : 0, next.notes, new Date().toISOString()).run();
+  return json({ member: next });
+}
+
+async function refreshViewingSummary(env, movieId) {
+  const last = await env.DB.prepare(
+    "SELECT MAX(watched_at) AS latest, COUNT(*) AS total FROM watch_history WHERE movie_id = ?",
+  ).bind(movieId).first();
+  const status = last.total ? "watched" : "unwatched";
+  await env.DB.prepare(`
+    INSERT INTO movie_progress (movie_id, status, last_watched_at, watch_count, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(movie_id) DO UPDATE SET status=excluded.status,
+      last_watched_at=excluded.last_watched_at, watch_count=excluded.watch_count, updated_at=excluded.updated_at
+  `).bind(movieId, status, last.latest || null, Number(last.total), new Date().toISOString()).run();
+}
+
+async function listViewingEvents(env, movieId) {
+  const watches = await env.DB.prepare(
+    "SELECT id, watched_at AS watchedAt FROM watch_history WHERE movie_id = ? ORDER BY watched_at DESC",
+  ).bind(movieId).all();
+  const attendance = await env.DB.prepare(
+    "SELECT a.watch_id, a.member_id FROM watch_attendance a JOIN watch_history w ON w.id = a.watch_id WHERE w.movie_id = ?",
+  ).bind(movieId).all();
+  const viewers = new Map();
+  for (const row of attendance.results) {
+    if (!viewers.has(row.watch_id)) viewers.set(row.watch_id, []);
+    viewers.get(row.watch_id).push(row.member_id);
+  }
+  return watches.results.map((entry) => ({
+    id: entry.id, watchedAt: entry.watchedAt, viewers: viewers.get(entry.id) || [],
+  }));
+}
+
+async function addViewingEvent(request, env, movieId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+  const body = await readJson(request);
+  const watchedAt = validateWatchDate(body.date);
+  if (!Array.isArray(body.viewers) || body.viewers.length < 1 || body.viewers.length > 2) {
+    throw new ValidationError("Choose at least one family member.");
+  }
+  const viewers = [...new Set(body.viewers.map(assertMemberId))];
+  await env.DB.prepare("INSERT OR IGNORE INTO watch_history(movie_id, watched_at) VALUES (?, ?)").bind(movieId, watchedAt).run();
+  const row = await env.DB.prepare(
+    "SELECT id FROM watch_history WHERE movie_id = ? AND watched_at = ?",
+  ).bind(movieId, watchedAt).first();
+  await env.DB.batch(viewers.map((viewer) => env.DB.prepare(
+    "INSERT OR IGNORE INTO watch_attendance(watch_id, member_id) VALUES (?, ?)",
+  ).bind(row.id, viewer)));
+  await refreshViewingSummary(env, movieId);
+  return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) }, 201);
+}
+
+async function deleteViewingEvent(env, movieId, eventId) {
+  const result = await env.DB.prepare("DELETE FROM watch_history WHERE id = ? AND movie_id = ?").bind(eventId, movieId).run();
+  if (!result.meta.changes) return json({ error: "Viewing event not found." }, 404);
+  await refreshViewingSummary(env, movieId);
+  return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) });
+}
+
+async function editMovie(request, env, movieId) {
+  const old = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!old) return json({ error: "Movie not found." }, 404);
+  const input = await readJson(request);
+  const title = optionalText(input.title, "Title", 160);
+  if (!title) throw new ValidationError("Title is required.");
+  if (!MOVIE_CATEGORIES.has(input.category)) throw new ValidationError("Invalid category.");
+  const year = input.releaseYear === null || input.releaseYear === "" ? null : Number(input.releaseYear);
+  if (year !== null && (!Number.isInteger(year) || year < 1888 || year > 2200)) {
+    throw new ValidationError("Invalid release year.");
+  }
+  await env.DB.prepare(`
+    UPDATE movies SET title_ru = ?, title_en = ?, category = ?,
+      description_ru = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).bind(title, optionalText(input.titleEn, "English title", 160), input.category,
+    optionalText(input.description, "Description", 3000), year, movieId).run();
+  return json({ movie: await getCatalogMovie(env, movieId) });
+}
+
+async function deleteMovie(env, movieId) {
+  const result = await env.DB.prepare("DELETE FROM movies WHERE id = ?").bind(movieId).run();
+  return result.meta.changes ? json({ deleted: true }) : json({ error: "Movie not found." }, 404);
 }
 
 async function handleApi(request, env) {
@@ -354,9 +528,23 @@ async function handleApi(request, env) {
 
   if (!env.DB) return json({ error: "The database is not configured." }, 503);
 
+  // No family records, ratings, notes or viewing history are publicly readable.
+  if (!(await isAuthorized(request, env))) return json({ error: "Authentication required." }, 401);
+
   if (url.pathname === "/api/catalog" && request.method === "GET") {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
+  if (url.pathname === "/api/profiles" && request.method === "GET") return json({ profiles: await listProfiles(env) });
+  const profileMatch = url.pathname.match(/^\\/api\\/profiles\\/(\\d+)$/);
+  if (profileMatch && request.method === "PUT") return updateProfile(request, env, assertMemberId(profileMatch[1]));
+
+  const personalMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/member\\/(\\d+)$/);
+  if (personalMatch && request.method === "PATCH") return updateMemberProgress(request, env, Number(personalMatch[1]), assertMemberId(personalMatch[2]));
+
+  const watchesMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/watches$/);
+  if (watchesMatch && request.method === "POST") return addViewingEvent(request, env, Number(watchesMatch[1]));
+  const watchEventMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)\\/watches\\/(\\d+)$/);
+  if (watchEventMatch && request.method === "DELETE") return deleteViewingEvent(env, Number(watchEventMatch[1]), Number(watchEventMatch[2]));
 
   const historyMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/history$/);
   if (historyMatch && request.method === "GET") {
@@ -368,8 +556,6 @@ async function handleApi(request, env) {
     return getPoster(env, Number(posterMatch[1]));
   }
 
-  if (!(await isAuthorized(request, env))) return json({ error: "Authentication required." }, 401);
-
   if (url.pathname === "/api/export" && request.method === "GET") {
     return exportData(env);
   }
@@ -377,6 +563,9 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/movies" && request.method === "POST") {
     return createMovie(request, env);
   }
+  const movieMatch = url.pathname.match(/^\\/api\\/movies\\/(\\d+)$/);
+  if (movieMatch && request.method === "PUT") return editMovie(request, env, Number(movieMatch[1]));
+  if (movieMatch && request.method === "DELETE") return deleteMovie(env, Number(movieMatch[1]));
 
   const uploadPosterMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/poster$/);
   if (uploadPosterMatch && request.method === "POST") {
