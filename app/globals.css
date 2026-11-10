@@ -419,3 +419,13 @@ img { display: block; max-width: 100%; }
 .watchlistButton { width: 100%; min-height: 46px; margin: 9px 0 2px; padding: 12px; border: 1px solid rgba(214,173,99,.55); border-radius: 3px; background: rgba(214,173,99,.06); color: var(--gold-bright); font-size: 12px; cursor: pointer; }
 .watchlistButton.active { background: rgba(214,173,99,.23); border-color: var(--gold); color: white; }
 .legacyNotes { padding: 12px; border-left: 2px solid #d6ad63; background: rgba(214,173,99,.055); color: #b8b3aa; font-size: 12px; overflow-wrap: anywhere; }
+
+.mobileRating { display: none; }
+@media (max-width: 680px) {
+  .siteHeader > .brand > span:last-child { display: none; }
+  .starsCompact { display: none; }
+  .mobileRating { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 82px; padding: 8px 12px; border: 1px solid rgba(214,173,99,.38); background: rgba(214,173,99,.09); color: var(--gold-bright); cursor: pointer; font-size: 12px; }
+}
+@media (max-width: 420px) {
+  .siteHeader .profileChip { display: none; }
+}

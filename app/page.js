@@ -219,6 +219,7 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, view, memberId }
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
         <div className="cardBottom">
           <Stars value={personal.rating || 0} onChange={(rating) => onUpdate(movie.id, { rating })} compact label={labels.modal.rating} />
+          <button type="button" className="mobileRating" onClick={() => onOpen(movie.id)}>{personal.rating ? `★ ${personal.rating}/5` : labels.family.rate}</button>
           <span className="moreLink">{labels.catalog.details} <Icon name="chevron" size={14} /></span>
         </div>
       </div>
@@ -1061,6 +1062,7 @@ export default function Home() {
         <p>{movies.length} {t.footer.description}</p>
         <div className="footerActions">
           <button type="button" onClick={() => setInstallGuideOpen(true)}><Icon name="share" size={17} /> {t.footer.homeScreen}</button>
+          <button type="button" onClick={() => setProfileSettingsOpen(true)}><Icon name="heart" size={17} /> {t.family.profiles}</button>
           <button type="button" onClick={exportBackup}><Icon name="download" size={17} /> {t.footer.export}</button>
           <button type="button" onClick={() => restoreInputRef.current?.click()}><Icon name="upload" size={17} /> {t.family.restore}</button>
           <input ref={restoreInputRef} className="visuallyHidden" type="file" accept=".json,application/json" onChange={async (event) => {
