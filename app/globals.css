@@ -429,3 +429,15 @@ img { display: block; max-width: 100%; }
 @media (max-width: 420px) {
   .siteHeader .profileChip { display: none; }
 }
+
+.tmdbSearch { display: grid; gap: 9px; padding: 8px 0; }
+.tmdbSearch > button { min-height: 44px; padding: 10px; border: 1px solid var(--gold); border-radius: 3px; background: rgba(214,173,99,.14); color: var(--gold-bright); cursor: pointer; font-size: 12px; }
+.tmdbSearch small { color: var(--muted); font-size: 12px; }
+.tmdbMatches { display: grid; gap: 5px; max-height: 285px; overflow-y: auto; }
+.tmdbMatches > button { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 7px; border: 1px solid var(--line); background: #17171b; color: white; text-align: left; cursor: pointer; }
+.tmdbMatches img { width: 39px; height: 55px; object-fit: cover; }
+.tmdbMatches span { display: grid; gap: 4px; font-size: 13px; }
+.tmdbMatches span small { font-size: 11px; }
+.tmdbCredits { display: flex; align-items: center; gap: 8px; max-width: 345px; margin-top: 9px; text-transform: none; letter-spacing: 0; line-height: 1.4; }
+.tmdbCredits img { width: 34px; height: auto; }
+.tmdbCredits small { font-size: 9px; color: #85838d; }

@@ -222,6 +222,64 @@ function optionalText(value, field, maxLength) {
   return trimmed || null;
 }
 
+
+function tmdbPosterUrl(value) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || !/^https:\/\/image\.tmdb\.org\/t\/p\/w342\/[a-zA-Z0-9._-]+\.(jpg|jpeg|webp|png)$/i.test(value)) {
+    throw new ValidationError("Invalid TMDB poster URL.");
+  }
+  return value;
+}
+
+async function searchTmdb(url, env) {
+  if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
+  const query = url.searchParams.get("q")?.trim() || "";
+  if (query.length < 2 || query.length > 100) throw new ValidationError("Search must be 2–100 characters.");
+  const endpoint = new URL("https://api.themoviedb.org/3/search/multi");
+  endpoint.searchParams.set("query", query);
+  endpoint.searchParams.set("language", "ru-RU");
+  endpoint.searchParams.set("include_adult", "false");
+  const response = await fetch(endpoint, {
+    headers: { authorization: `Bearer ${env.TMDB_READ_TOKEN}`, accept: "application/json" },
+  });
+  if (!response.ok) return json({ error: "TMDB search failed." }, 502);
+  const payload = await response.json();
+  const results = (payload.results || [])
+    .filter((item) => item.media_type === "movie" || item.media_type === "tv")
+    .slice(0, 8)
+    .map((item) => ({
+      id: item.id,
+      title: item.title || item.name || "",
+      titleEn: item.original_title || item.original_name || "",
+      description: item.overview || "",
+      releaseYear: Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null,
+      category: item.media_type === "tv" ? "series" : "movies",
+      posterUrl: item.poster_path && /^\/[a-zA-Z0-9._-]+$/.test(item.poster_path)
+        ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : null,
+    }));
+  return json({ results });
+}
+
+async function archiveTmdbPoster(env, movieId, url) {
+  if (!url) return;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return;
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!POSTER_TYPES.has(contentType)) return;
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > MAX_POSTER_BYTES) return;
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO movie_posters (movie_id, content_type, image) VALUES (?, ?, ?)
+        ON CONFLICT(movie_id) DO UPDATE SET content_type=excluded.content_type,
+        image=excluded.image, updated_at=CURRENT_TIMESTAMP
+      `).bind(movieId, contentType, bytes),
+      env.DB.prepare("UPDATE movies SET poster_path = ? WHERE id = ?").bind(`/api/posters/${movieId}`, movieId),
+    ]);
+  } catch (error) { console.warn("TMDB poster archival failed", error); }
+}
+
 async function createMovie(request, env) {
   const input = await readJson(request);
   const title = optionalText(input.title, "Title", 160);
@@ -237,6 +295,7 @@ async function createMovie(request, env) {
     throw new ValidationError("The release year is invalid.");
   }
 
+  const posterFromTmdb = tmdbPosterUrl(input.posterFromTmdb);
   const nextOrder = await env.DB.prepare(
     "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
   ).first();
@@ -244,8 +303,8 @@ async function createMovie(request, env) {
     INSERT INTO movies (
       category, title_ru, title_en, description_ru, description_en,
       poster_path, release_year, collection_order
-    ) VALUES (?, ?, ?, ?, NULL, '/film-reel.png', ?, ?)
-  `).bind(input.category, title, titleEn, description, releaseYear, Number(nextOrder?.value || 1)).run();
+    ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+  `).bind(input.category, title, titleEn, description, posterFromTmdb || "/film-reel.png", releaseYear, Number(nextOrder?.value || 1)).run();
 
   const movieId = Number(insert.meta.last_row_id);
   const progressInput = {
@@ -255,6 +314,7 @@ async function createMovie(request, env) {
   if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
   const normalized = normalizeProgressPatch(progressInput, {});
   await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
+  if (posterFromTmdb) await archiveTmdbPoster(env, movieId, posterFromTmdb);
 
   return json({ movie: await getCatalogMovie(env, movieId) }, 201);
 }
@@ -613,6 +673,7 @@ async function handleApi(request, env) {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
   if (url.pathname === "/api/profiles" && request.method === "GET") return json({ profiles: await listProfiles(env) });
+  if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
   const profileMatch = url.pathname.match(/^\/api\/profiles\/(\d+)$/);
   if (profileMatch && request.method === "PUT") return updateProfile(request, env, assertMemberId(profileMatch[1]));
 

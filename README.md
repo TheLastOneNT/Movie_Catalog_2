@@ -78,3 +78,7 @@ Family profiles have independent ratings, favorites and notes. Watching events c
 On iPhone: open the deployed site in Safari, tap Share → Add to Home Screen. A service worker caches public app assets for offline reopening, but not private API data. Browser local storage may keep an offline copy of the catalog on an authenticated device; clear website data if removing access.
 
 **v3 JSON backups** include personal ratings, viewing attendance, and uploaded D1 poster BLOBs. A validated import preview and explicitly confirmed transactional full replacement are available in the footer. Legacy static posters still depend on the checked-in /public/posters assets. Keep a separate D1 recovery point before a restore. Earlier v1/v2 JSON exports are intentionally not accepted as full backups.
+
+## Optional TMDB auto-fill
+
+To enable optional movie/series search when adding a title, obtain an **API Read Access Token** from The Movie Database and configure it as a Cloudflare Worker secret: `npx wrangler secret put TMDB_READ_TOKEN`. Do not commit the token. All TMDB requests go through the Worker, and nothing is shared in the public frontend. TMDB is free for qualifying noncommercial uses with attribution; review its terms. Poster files are copied into D1 when possible, otherwise a TMDB image URL remains as fallback. Manual addition works without any TMDB token. https://developer.themoviedb.org/docs/faq

@@ -272,6 +272,28 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     lastWatchedAt: initialMovie.progress.lastWatchedAt?.slice(0, 10) || "", description: initialMovie.description || "",
   } : initialForm);
   const [poster, setPoster] = useState(null);
+  const [tmdbMatches, setTmdbMatches] = useState([]);
+  const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [tmdbPoster, setTmdbPoster] = useState(null);
+  const [tmdbError, setTmdbError] = useState("");
+  const searchOnTmdb = async () => {
+    if (form.title.trim().length < 2) return;
+    setTmdbLoading(true); setTmdbError("");
+    try {
+      const response = await fetch(`/api/tmdb/search?q=${encodeURIComponent(form.title.trim())}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(labels.family.tmdbUnavailable);
+      setTmdbMatches(data.results || []);
+      if (!(data.results || []).length) setTmdbError(labels.family.tmdbNoResults);
+    } catch (error) { setTmdbError(error.message || labels.family.tmdbUnavailable); }
+    finally { setTmdbLoading(false); }
+  };
+  const selectTmdb = (match) => {
+    setForm((current) => ({ ...current, title: match.title || current.title,
+      titleEn: match.titleEn || "", description: match.description || "",
+      releaseYear: match.releaseYear || "", category: match.category || current.category }));
+    setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
+  };
   const [preview, setPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -292,7 +314,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     setSubmitting(true);
     setError("");
     try {
-      await onCreate(form, poster);
+      await onCreate(form, poster, tmdbPoster);
     } catch (submitError) {
       setError(submitError.message || labels.addMovie.error);
       setSubmitting(false);
@@ -314,6 +336,14 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.name}</span>
               <input required maxLength={160} value={form.title} onChange={(event) => update("title", event.target.value)} placeholder={labels.addMovie.namePlaceholder} autoFocus />
             </label>
+            {!initialMovie && <div className="tmdbSearch wideField">
+              <button type="button" onClick={searchOnTmdb} disabled={tmdbLoading || form.title.trim().length < 2}>{tmdbLoading ? labels.sync.saving : labels.family.tmdbSearch}</button>
+              {tmdbError && <small role="status">{tmdbError}</small>}
+              {!!tmdbMatches.length && <div className="tmdbMatches">{tmdbMatches.map((match) => <button type="button" key={match.id + ":" + match.category} onClick={() => selectTmdb(match)}>
+                {match.posterUrl && <img src={match.posterUrl} alt="" loading="lazy" />}
+                <span>{match.title}<small>{match.releaseYear || ""}</small></span>
+              </button>)}</div>}
+            </div>}
             <label>
               <span>{labels.addMovie.englishName}</span>
               <input maxLength={160} value={form.titleEn} onChange={(event) => update("titleEn", event.target.value)} placeholder={labels.addMovie.englishNamePlaceholder} />
@@ -349,7 +379,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </div>
 
           <label className={preview ? "posterUpload hasPreview" : "posterUpload"}>
-            {preview ? <img src={preview} alt="" /> : <Icon name="upload" size={28} />}
+            {preview || tmdbPoster ? <img src={preview || tmdbPoster} alt="" /> : <Icon name="upload" size={28} />}
             <strong>{labels.addMovie.choosePoster}</strong>
             <small>{labels.addMovie.posterHint}</small>
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setPoster(event.target.files?.[0] || null)} />
@@ -810,7 +840,7 @@ export default function Home() {
     requireAccess(() => setAddMovieOpen(true));
   };
 
-  const createMovie = async (form, posterFile) => {
+  const createMovie = async (form, posterFile, tmdbPoster) => {
     const optimizedPoster = posterFile ? await optimizePoster(posterFile) : null;
     const response = await fetch("/api/movies", {
       method: "POST",
@@ -820,6 +850,7 @@ export default function Home() {
         ...form,
         rating: form.rating || null,
         releaseYear: form.releaseYear || null,
+        posterFromTmdb: posterFile ? null : tmdbPoster,
         lastWatchedAt: form.status === "watched" ? form.lastWatchedAt || null : null,
       }),
     });
@@ -1059,7 +1090,7 @@ export default function Home() {
 
       <footer className="siteFooter">
         <div className="brand"><span className="brandMark"><Icon name="film" size={18} /></span><span>MOVIE <b>CATALOG</b></span></div>
-        <p>{movies.length} {t.footer.description}</p>
+        <p>{movies.length} {t.footer.description}<span className="tmdbCredits"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg" alt="TMDB" /></a><small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small></span></p>
         <div className="footerActions">
           <button type="button" onClick={() => setInstallGuideOpen(true)}><Icon name="share" size={17} /> {t.footer.homeScreen}</button>
           <button type="button" onClick={() => setProfileSettingsOpen(true)}><Icon name="heart" size={17} /> {t.family.profiles}</button>
