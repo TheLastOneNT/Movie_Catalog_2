@@ -77,4 +77,4 @@ Family profiles have independent ratings, favorites and notes. Watching events c
 
 On iPhone: open the deployed site in Safari, tap Share → Add to Home Screen. A service worker caches public app assets for offline reopening, but not private API data. Browser local storage may keep an offline copy of the catalog on an authenticated device; clear website data if removing access.
 
-**Important:** the JSON export does not contain the original uploaded poster BLOBs and currently has no built-in import flow. Keep Cloudflare D1 recovery as a full backup.
+**v3 JSON backups** include personal ratings, viewing attendance, and uploaded D1 poster BLOBs. A validated import preview and explicitly confirmed transactional full replacement are available in the footer. Legacy static posters still depend on the checked-in /public/posters assets. Keep a separate D1 recovery point before a restore. Earlier v1/v2 JSON exports are intentionally not accepted as full backups.

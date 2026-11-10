@@ -1,4 +1,5 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
+import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
 const MOVIE_CATEGORIES = new Set(["movies", "series", "cartoons", "documentaries"]);
@@ -333,17 +334,21 @@ async function exportData(env) {
   const [catalog, history] = await Promise.all([
     listCatalog(env),
     env.DB.prepare(
-      "SELECT movie_id AS movieId, watched_at AS watchedAt, created_at AS createdAt FROM watch_history ORDER BY watched_at DESC",
+      "SELECT id, movie_id AS movieId, watched_at AS watchedAt, created_at AS createdAt FROM watch_history ORDER BY watched_at DESC",
     ).all(),
   ]);
+  const posterRows = await env.DB.prepare("SELECT movie_id, content_type, image FROM movie_posters").all();
   return json({
-    schemaVersion: 2,
+    schemaVersion: 3,
     exportedAt: new Date().toISOString(),
     movies: catalog,
     profiles: await listProfiles(env),
     watchHistory: history.results,
     watchAttendance: (await env.DB.prepare("SELECT watch_id AS watchId, member_id AS memberId FROM watch_attendance").all()).results,
-    notice: "Uploaded poster BLOBs are not included. Keep a D1 snapshot for full disaster recovery.",
+    moviePosters: posterRows.results.map((row) => ({
+      movieId: row.movie_id, contentType: row.content_type, base64: bytesToBase64(row.image),
+    })),
+    notice: "Restore requires this repository's /public/posters static assets for legacy images.",
   });
 }
 
@@ -505,6 +510,75 @@ async function deleteMovie(env, movieId) {
   return result.meta.changes ? json({ deleted: true }) : json({ error: "Movie not found." }, 404);
 }
 
+
+async function readBackup(request) {
+  const declared = Number(request.headers.get("content-length") || 0);
+  if (declared > MAX_BACKUP_BYTES) throw new ValidationError("Backup exceeds 30 MB.");
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > MAX_BACKUP_BYTES) {
+    throw new ValidationError("Backup exceeds 30 MB.");
+  }
+  let snapshot;
+  try { snapshot = JSON.parse(raw); }
+  catch { throw new ValidationError("Backup must contain valid JSON."); }
+  try { return { snapshot, summary: validateBackup(snapshot) }; }
+  catch (error) {
+    if (error instanceof BackupError) throw new ValidationError(error.message);
+    throw error;
+  }
+}
+
+async function restoreBackup(env, snapshot) {
+  // One atomic D1 transaction. No existing rows are deleted until full validation passes.
+  const statements = [
+    "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
+    "DELETE FROM movie_progress", "DELETE FROM movie_posters", "DELETE FROM movies",
+  ].map((sql) => env.DB.prepare(sql));
+  for (const person of snapshot.profiles) {
+    statements.push(env.DB.prepare("UPDATE family_profiles SET display_name = ? WHERE id = ?").bind(person.name.trim(), person.id));
+  }
+  const posterIds = new Set(snapshot.moviePosters.map(x => x.movieId));
+  for (const movie of snapshot.movies) {
+    const poster = movie.poster?.startsWith("/api/posters/") && !posterIds.has(movie.id) ? "/film-reel.png" : (movie.poster || "/film-reel.png");
+    statements.push(env.DB.prepare(`
+      INSERT INTO movies(id, category, title_ru, title_en, description_ru, description_en,
+        poster_path, release_year, collection_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(movie.id, movie.category, movie.title, movie.titleEn || null, movie.description || null,
+      movie.descriptionEn || null, poster, movie.releaseYear ?? null, movie.collectionOrder));
+    const p = movie.progress;
+    statements.push(env.DB.prepare(`
+      INSERT INTO movie_progress(movie_id, status, rating, is_favorite, last_watched_at, watch_count, notes, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(movie.id, p.status, p.rating ?? null, p.isFavorite ? 1 : 0, p.lastWatchedAt || null,
+      p.watchCount || 0, p.notes || "", p.updatedAt || new Date().toISOString()));
+    for (const [memberId, m] of Object.entries(movie.members)) {
+      statements.push(env.DB.prepare(`
+        INSERT INTO member_progress(movie_id, member_id, rating, is_favorite, wants_to_watch, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(movie.id, Number(memberId), m.rating ?? null, m.isFavorite ? 1 : 0,
+        m.wantsToWatch ? 1 : 0, m.notes || ""));
+    }
+  }
+  for (const event of snapshot.watchHistory) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO watch_history(id, movie_id, watched_at, created_at) VALUES (?, ?, ?, ?)",
+    ).bind(event.id, event.movieId, event.watchedAt, event.createdAt || new Date().toISOString()));
+  }
+  for (const viewer of snapshot.watchAttendance) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO watch_attendance(watch_id, member_id) VALUES (?, ?)",
+    ).bind(viewer.watchId, viewer.memberId));
+  }
+  for (const poster of snapshot.moviePosters) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO movie_posters(movie_id, content_type, image) VALUES (?, ?, ?)",
+    ).bind(poster.movieId, poster.contentType, base64ToBytes(poster.base64)));
+  }
+  await env.DB.batch(statements);
+  return json({ restored: true, movies: snapshot.movies.length });
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   assertSameOrigin(request, url);
@@ -562,6 +636,17 @@ async function handleApi(request, env) {
 
   if (url.pathname === "/api/export" && request.method === "GET") {
     return exportData(env);
+  }
+  if (url.pathname === "/api/import/preview" && request.method === "POST") {
+    const { summary } = await readBackup(request);
+    return json({ summary });
+  }
+  if (url.pathname === "/api/import" && request.method === "POST") {
+    if (request.headers.get("x-confirm-restore") !== "REPLACE_ALL") {
+      return json({ error: "Explicit restore confirmation is required." }, 400);
+    }
+    const { snapshot } = await readBackup(request);
+    return restoreBackup(env, snapshot);
   }
 
   if (url.pathname === "/api/movies" && request.method === "POST") {

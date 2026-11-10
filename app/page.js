@@ -416,6 +416,7 @@ export default function Home() {
   const [historyDates, setHistoryDates] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const requestQueue = useRef(Promise.resolve());
+  const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
   const t = translations[language];
   const activeName = profiles.find((person) => person.id === activeMember)?.name || "";
@@ -771,6 +772,34 @@ export default function Home() {
     requireAccess(performExportBackup);
   };
 
+  const restoreFromFile = async (file) => {
+    if (!file) return;
+    if (file.size > 30_000_000) { window.alert(t.family.restoreTooLarge); return; }
+    let raw;
+    try {
+      raw = await file.text();
+      const check = await fetch("/api/import/preview", {
+        method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: raw,
+      });
+      const data = await check.json();
+      if (!check.ok) throw new Error(data.error || t.family.restoreInvalid);
+      if (!window.confirm(t.family.restoreWarning.replace("{movies}", data.summary.movies).replace("{views}", data.summary.views))) return;
+      const typed = window.prompt(t.family.restoreKeyword);
+      if (typed !== "RESTORE") return;
+      const response = await fetch("/api/import", {
+        method: "POST", credentials: "same-origin",
+        headers: { "content-type": "application/json", "x-confirm-restore": "REPLACE_ALL" }, body: raw,
+      });
+      if (!response.ok) throw new Error((await response.json()).error || t.sync.error);
+      await Promise.all([loadCatalog(), loadProfiles()]);
+      setSelectedId(null);
+      window.alert(t.family.restoreSuccess);
+    } catch (error) {
+      window.alert(error.message || t.family.restoreInvalid);
+    }
+  };
+
+
   const selectCategory = (nextCategory) => {
     setCategory(nextCategory);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1033,6 +1062,10 @@ export default function Home() {
         <div className="footerActions">
           <button type="button" onClick={() => setInstallGuideOpen(true)}><Icon name="share" size={17} /> {t.footer.homeScreen}</button>
           <button type="button" onClick={exportBackup}><Icon name="download" size={17} /> {t.footer.export}</button>
+          <button type="button" onClick={() => restoreInputRef.current?.click()}><Icon name="upload" size={17} /> {t.family.restore}</button>
+          <input ref={restoreInputRef} className="visuallyHidden" type="file" accept=".json,application/json" onChange={async (event) => {
+            const file = event.target.files?.[0]; event.target.value = ""; if (file) await restoreFromFile(file);
+          }} />
           <button type="button" onClick={authState === "authenticated" ? logout : () => requireAccess()}>
             <Icon name={authState === "authenticated" ? "logout" : "lock"} size={17} />
             {authState === "authenticated" ? t.nav.logout : t.nav.edit}
