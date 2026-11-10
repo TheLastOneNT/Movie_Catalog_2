@@ -142,7 +142,7 @@ function AccessScreen({ mode, language, onLanguageChange, onUnlock, onClose }) {
 }
 
 function personalFor(movie, memberId) {
-  return movie.members?.[memberId] || { rating: null, isFavorite: false, notes: "" };
+  return movie.members?.[memberId] || { rating: null, isFavorite: false, wantsToWatch: false, notes: "" };
 }
 
 function todayLocal() {
@@ -839,6 +839,10 @@ export default function Home() {
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
       if (status === "rated" && !personalFor(movie, activeMember).rating) return false;
       if (status === "favorites" && !personalFor(movie, activeMember).isFavorite) return false;
+      if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
+      if (status === "rewatch" && (movie.progress.status !== "watched" || !(profiles.some((person) => {
+        const own = personalFor(movie, person.id); return own.isFavorite || (own.rating || 0) >= 4;
+      }) || (movie.progress.rating || 0) >= 4 || movie.progress.isFavorite))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
@@ -849,7 +853,7 @@ export default function Home() {
     if (sort === "recent") result = [...result].sort((a, b) => (b.progress.lastWatchedAt || "").localeCompare(a.progress.lastWatchedAt || ""));
     if (sort === "oldest") result = sortOldestWatched(result);
     return result;
-  }, [category, movies, query, shuffleSeed, sort, status, t.locale, activeMember]);
+  }, [category, movies, query, shuffleSeed, sort, status, t.locale, activeMember, profiles]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const favoriteCount = movies.filter((movie) => personalFor(movie, activeMember).isFavorite).length;
@@ -857,8 +861,9 @@ export default function Home() {
   const randomMode = randomIndex >= 0;
 
   const getRandomId = (excludeId = null) => {
-    const pool = filtered.length ? filtered : movies;
-    const candidates = pool.length > 1 ? pool.filter((movie) => movie.id !== excludeId) : pool;
+    const pool = filtered;
+    const remaining = pool.filter((movie) => !randomHistory.includes(movie.id));
+    const candidates = remaining.length ? remaining : pool.filter((movie) => movie.id !== excludeId);
     return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)].id : null;
   };
 
@@ -979,6 +984,8 @@ export default function Home() {
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
             <option value="rated">{t.catalog.rated}</option>
             <option value="favorites">{t.catalog.favorites}</option>
+            <option value="watchlist">{t.family.watchlist}</option>
+            <option value="rewatch">{t.family.rewatch}</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
             <option value="random">{t.catalog.randomOrder}</option>
@@ -1074,6 +1081,7 @@ export default function Home() {
                 </div>)}
                 {selected.progress.rating ? <small>{t.family.legacyRating}: {selected.progress.rating}/5</small> : null}
               </div>
+              <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 
               <div className="watchRecorder">
                 <h3>{t.family.recordWatch}</h3>

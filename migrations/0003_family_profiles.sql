@@ -11,6 +11,7 @@ CREATE TABLE member_progress (
   member_id INTEGER NOT NULL REFERENCES family_profiles(id) ON DELETE CASCADE,
   rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
   is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+  wants_to_watch INTEGER NOT NULL DEFAULT 0 CHECK (wants_to_watch IN (0, 1)),
   notes TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (movie_id, member_id)

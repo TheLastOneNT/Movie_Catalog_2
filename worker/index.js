@@ -126,14 +126,14 @@ async function listCatalog(env) {
     LEFT JOIN movie_progress p ON p.movie_id = m.id
     ORDER BY m.collection_order ASC
   `).all(),
-    env.DB.prepare("SELECT movie_id, member_id, rating, is_favorite, notes FROM member_progress").all(),
+    env.DB.prepare("SELECT movie_id, member_id, rating, is_favorite, wants_to_watch, notes FROM member_progress").all(),
   ]);
 
   const membersByMovie = new Map();
   for (const row of memberRows.results) {
     if (!membersByMovie.has(row.movie_id)) membersByMovie.set(row.movie_id, {});
     membersByMovie.get(row.movie_id)[row.member_id] = {
-      rating: row.rating, isFavorite: Boolean(row.is_favorite), notes: row.notes || "",
+      rating: row.rating, isFavorite: Boolean(row.is_favorite), wantsToWatch: Boolean(row.wants_to_watch), notes: row.notes || "",
     };
   }
   return result.results.map((row) => ({ ...mapMovie(row), members: membersByMovie.get(row.id) || {} }));
@@ -152,10 +152,10 @@ async function getCatalogMovie(env, movieId) {
   `).bind(movieId).first();
   if (!row) return null;
   const members = await env.DB.prepare(
-    "SELECT member_id, rating, is_favorite, notes FROM member_progress WHERE movie_id = ?",
+    "SELECT member_id, rating, is_favorite, wants_to_watch, notes FROM member_progress WHERE movie_id = ?",
   ).bind(movieId).all();
   return { ...mapMovie(row), members: Object.fromEntries(members.results.map((entry) => [entry.member_id, {
-    rating: entry.rating, isFavorite: Boolean(entry.is_favorite), notes: entry.notes || "",
+    rating: entry.rating, isFavorite: Boolean(entry.is_favorite), wantsToWatch: Boolean(entry.wants_to_watch), notes: entry.notes || "",
   }])) };
 }
 
@@ -387,7 +387,7 @@ async function updateMemberProgress(request, env, movieId, memberId) {
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
   const input = await readJson(request);
-  const permitted = new Set(["rating", "isFavorite", "notes"]);
+  const permitted = new Set(["rating", "isFavorite", "wantsToWatch", "notes"]);
   if (!input || typeof input !== "object" || Array.isArray(input)
       || Object.keys(input).some((key) => !permitted.has(key))) {
     throw new ValidationError("Invalid profile update.");
@@ -399,24 +399,28 @@ async function updateMemberProgress(request, env, movieId, memberId) {
   if ("isFavorite" in input && typeof input.isFavorite !== "boolean") {
     throw new ValidationError("Favorite must be true or false.");
   }
+  if ("wantsToWatch" in input && typeof input.wantsToWatch !== "boolean") {
+    throw new ValidationError("Watchlist must be true or false.");
+  }
   if ("notes" in input && (typeof input.notes !== "string" || input.notes.length > 5000)) {
     throw new ValidationError("Notes must be under 5,000 characters.");
   }
   const old = await env.DB.prepare(
-    "SELECT rating, is_favorite, notes FROM member_progress WHERE movie_id = ? AND member_id = ?",
+    "SELECT rating, is_favorite, wants_to_watch, notes FROM member_progress WHERE movie_id = ? AND member_id = ?",
   ).bind(movieId, memberId).first();
   const next = {
     rating: "rating" in input ? input.rating : (old?.rating ?? null),
     isFavorite: "isFavorite" in input ? input.isFavorite : Boolean(old?.is_favorite),
+    wantsToWatch: "wantsToWatch" in input ? input.wantsToWatch : Boolean(old?.wants_to_watch),
     notes: "notes" in input ? input.notes : (old?.notes || ""),
   };
   await env.DB.prepare(`
-    INSERT INTO member_progress (movie_id, member_id, rating, is_favorite, notes, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO member_progress (movie_id, member_id, rating, is_favorite, wants_to_watch, notes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(movie_id, member_id) DO UPDATE SET
       rating = excluded.rating, is_favorite = excluded.is_favorite,
-      notes = excluded.notes, updated_at = excluded.updated_at
-  `).bind(movieId, memberId, next.rating, next.isFavorite ? 1 : 0, next.notes, new Date().toISOString()).run();
+      wants_to_watch = excluded.wants_to_watch, notes = excluded.notes, updated_at = excluded.updated_at
+  `).bind(movieId, memberId, next.rating, next.isFavorite ? 1 : 0, next.wantsToWatch ? 1 : 0, next.notes, new Date().toISOString()).run();
   return json({ member: next });
 }
 
