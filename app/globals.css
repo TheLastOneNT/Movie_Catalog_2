@@ -69,7 +69,7 @@ img { display: block; max-width: 100%; }
 .desktopNav button { flex: 0 0 auto; height: 100%; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #99979d; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; white-space: nowrap; cursor: pointer; transition: .2s ease; }
 .desktopNav button:hover, .desktopNav button.active { color: white; border-bottom-color: var(--gold); }
 
-.headerActions { justify-self: end; display: flex; align-items: center; gap: 12px; }
+.headerActions { justify-self: end; min-width: 0; display: flex; align-items: center; gap: 12px; }
 .randomHeader, .addHeader { display: flex; align-items: center; gap: 9px; border: 0; background: transparent; color: #e5e2dc; font-size: 12px; letter-spacing: .04em; cursor: pointer; }
 .randomHeader:hover, .addHeader:hover { color: var(--gold-bright); }
 .addHeader { padding: 8px 11px; border: 1px solid rgba(214,173,99,.3); color: var(--gold-bright); }
@@ -161,11 +161,11 @@ img { display: block; max-width: 100%; }
 .randomModalNav:hover:not(:disabled) { border-color: var(--gold-bright); background: var(--gold); color: #15110b; transform: translateY(-50%) scale(1.06); }
 .randomModalPrevious { left: max(14px, calc(50vw - 535px)); }
 .randomModalNext { right: max(14px, calc(50vw - 535px)); }
-.movieModal { position: relative; width: min(920px, 100%); max-height: min(760px, calc(100vh - 56px)); min-height: 590px; display: grid; grid-template-columns: minmax(280px, 38%) 1fr; overflow: hidden; border: 1px solid rgba(255,255,255,.13); background: #111114; box-shadow: 0 35px 90px rgba(0,0,0,.6); animation: lift .24s ease; }
+.movieModal { position: relative; width: min(1020px, 100%); max-height: calc(100dvh - 56px); min-height: 0; display: grid; grid-template-columns: minmax(280px, 37%) minmax(0, 1fr); align-items: start; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; border: 1px solid rgba(255,255,255,.13); background: #111114; box-shadow: 0 35px 90px rgba(0,0,0,.6); animation: lift .24s ease; }
 .modalClose { position: absolute; z-index: 5; top: 16px; right: 16px; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: rgba(9,9,11,.72); color: #c6c4c5; cursor: pointer; backdrop-filter: blur(6px); }
-.modalPoster { min-width: 0; min-height: 590px; overflow: hidden; background: #19191d; }
-.modalPoster img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
-.modalInfo { position: relative; z-index: 1; padding: 56px 44px 34px; display: flex; flex-direction: column; overflow-y: auto; background: #111114; }
+.modalPoster { position: sticky; top: 0; align-self: start; min-width: 0; min-height: 0; height: min(740px, calc(100dvh - 58px)); overflow: hidden; background: #19191d; }
+.modalPoster img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; }
+.modalInfo { position: relative; z-index: 1; min-width: 0; padding: 42px 38px 38px; display: flex; flex-direction: column; overflow: visible; background: #111114; }
 .modalCategory { color: var(--gold-bright); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; }
 .modalInfo h2 { margin: 12px 0 16px; font-family: Georgia, serif; font-size: clamp(32px, 4vw, 48px); font-weight: 400; line-height: 1.05; letter-spacing: -.035em; }
 .modalLead { margin: 0 0 30px; color: #8f8e94; font-size: 12px; line-height: 1.7; }
@@ -262,9 +262,11 @@ img { display: block; max-width: 100%; }
 @keyframes lift { from { opacity: 0; transform: translateY(14px) scale(.985); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 1180px) {
-  .siteHeader { height: calc(124px + var(--safe-top)); grid-template-columns: 1fr auto; grid-template-rows: 72px 52px; }
+@media (max-width: 1600px) {
+  .siteHeader { height: calc(124px + var(--safe-top)); grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 72px 52px; }
   .desktopNav { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; justify-content: center; border-top: 1px solid rgba(255,255,255,.05); }
+  .siteHeader > .brand { grid-column: 1; grid-row: 1; }
+  .headerActions { grid-column: 2; grid-row: 1; }
   .syncBadge { display: none; }
   .catalogSection { min-height: calc(100vh - 124px - var(--safe-top)); padding-top: 42px; }
   .movieGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -311,7 +313,7 @@ img { display: block; max-width: 100%; }
   .footerActions button { justify-content: center; }
   .modalBackdrop { padding: calc(var(--safe-top) + 8px) max(4px, var(--safe-right)) max(4px, var(--safe-bottom)) max(4px, var(--safe-left)); place-items: start center; overflow: hidden; }
   .movieModal { width: 100%; height: calc(100svh - var(--safe-top) - var(--safe-bottom) - 12px); max-height: calc(100svh - var(--safe-top) - var(--safe-bottom) - 12px); min-height: 0; display: block; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .modalPoster { width: 100%; height: min(38svh, 330px); min-height: 0; padding: 12px 52px 12px 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #09090b; }
+  .modalPoster { position: relative; top: auto; width: 100%; height: min(38svh, 330px); min-height: 0; padding: 12px 52px 12px 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #09090b; }
   .modalPoster img { width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
   .modalInfo { padding: 24px 18px calc(28px + env(safe-area-inset-bottom)); overflow: visible; }
   .movieModal.randomMode .modalInfo { padding-bottom: calc(102px + env(safe-area-inset-bottom)); }
@@ -441,3 +443,9 @@ img { display: block; max-width: 100%; }
 .tmdbCredits { display: flex; align-items: center; gap: 8px; max-width: 345px; margin-top: 9px; text-transform: none; letter-spacing: 0; line-height: 1.4; }
 .tmdbCredits img { width: 34px; height: auto; }
 .tmdbCredits small { font-size: 9px; color: #85838d; }
+
+/* Desktop-width safety: navigation stays on its own row, but cards keep their desktop density. */
+@media (min-width: 1181px) and (max-width: 1600px) {
+  .movieGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .toolbar { grid-template-columns: minmax(220px, 1fr) auto auto auto auto; }
+}

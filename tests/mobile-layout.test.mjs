@@ -22,3 +22,15 @@ test("the PWA uses the padded application icon", () => {
   assert.match(layout, /apple:\s*"\/app-icon-v2\.png"/);
   assert.match(manifest, /src:\s*"\/app-icon-v2\.png"/);
 });
+
+test("desktop header wraps before actions collide with navigation", () => {
+  assert.match(css, /@media \(max-width: 1600px\) \{[\s\S]*?\.siteHeader \{ height: calc\(124px/);
+  assert.match(css, /\.headerActions \{ grid-column: 2; grid-row: 1; \}/);
+  assert.match(css, /\.desktopNav \{ grid-column: 1 \/ -1; grid-row: 2/);
+});
+
+test("desktop movie details scroll as one panel without cropping artwork", () => {
+  assert.match(css, /\.movieModal \{[^}]*overflow-y: auto/s);
+  assert.match(css, /\.modalPoster img \{[^}]*object-fit: contain/s);
+  assert.match(css, /\.modalInfo \{[^}]*overflow: visible/s);
+});
