@@ -16,9 +16,9 @@ test("status dropdown retains only actionable filters",()=>{
  assert.match(page,/<option value="watchlist">/);
 });
 test("sort controls offer default, best rated and long unseen",()=>{
- assert.match(page,/<option value="random">Обычный порядок<\/option>/);
- assert.match(page,/<option value="rating">Сначала лучшие<\/option>/);
- assert.match(page,/<option value="oldest">Давно не смотрели<\/option>/);
+ assert.match(page, /<option value="random">\{language === "en" \? "Default order" : "Обычный порядок"\}<\/option>/);
+ assert.match(page, /<option value="rating">\{language === "en" \? "Highest rated" : "Сначала лучшие"\}<\/option>/);
+ assert.match(page, /<option value="oldest">\{language === "en" \? "Longest since watched" : "Давно не смотрели"\}<\/option>/);
  assert.doesNotMatch(page,/<option value="title">/);
  assert.doesNotMatch(page,/<option value="recent">/);
 });

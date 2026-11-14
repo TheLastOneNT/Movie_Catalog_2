@@ -17,5 +17,5 @@ test("rating update does not change viewing history or statuses", () => {
 });
 test("TMDB searches for artwork in the original language", () => {
   assert.match(worker, /original_language/);
-  assert.match(worker, /poster\.iso_639_1 === originalLanguage/);
+  assert.match(worker, /image.iso_639_1 === originalLanguage/);
 });

@@ -247,54 +247,148 @@ function tmdbPosterUrl(value) {
   return value;
 }
 
+async function tmdbGet(env, path, params = {}) {
+  if (!env.TMDB_READ_TOKEN) throw new ValidationError("TMDB is not configured.");
+  const endpoint = new URL(`https://api.themoviedb.org/3/${path}`);
+  for (const [key, value] of Object.entries(params)) endpoint.searchParams.set(key, String(value));
+  const response = await fetch(endpoint, {
+    headers: { authorization: `Bearer ${env.TMDB_READ_TOKEN}`, accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`TMDB HTTP ${response.status}`);
+  return response.json();
+}
+function tmdbImagePath(path) {
+  return typeof path === "string" && /^\/[a-zA-Z0-9._-]+$/.test(path)
+    ? `https://image.tmdb.org/t/p/w342${path}` : null;
+}
+function tmdbMediaType(category) {
+  return category === "series" ? "tv" : "movie";
+}
+async function tmdbDetails(env, mediaType, id) {
+  if (!["movie", "tv"].includes(mediaType) || !Number.isSafeInteger(id) || id < 1) throw new ValidationError("Invalid TMDB reference.");
+  const path = `${mediaType}/${id}`;
+  const [ru, en, images] = await Promise.all([
+    tmdbGet(env, path, { language: "ru-RU" }),
+    tmdbGet(env, path, { language: "en-US" }),
+    tmdbGet(env, `${path}/images`),
+  ]);
+  const originalLanguage = /^[a-z]{2}$/.test(ru.original_language || "") ? ru.original_language : null;
+  const originals = (images.posters || []).filter((image) =>
+    originalLanguage && image.iso_639_1 === originalLanguage && tmdbImagePath(image.file_path)
+  ).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+  // No safe match: don't silently substitute a Russian-dubbed poster.
+  const posterUrl = originals.length ? tmdbImagePath(originals[0].file_path) : null;
+  const getTitle = (entry) => entry.title || entry.name || "";
+  return {
+    tmdbId: id, mediaType, originalLanguage,
+    title: getTitle(ru),
+    titleEn: getTitle(en),
+    description: ru.overview || "",
+    descriptionEn: en.overview || "",
+    releaseYear: Number((ru.release_date || ru.first_air_date || "").slice(0, 4)) || null,
+    posterUrl,
+    posterAvailable: Boolean(posterUrl),
+    genreIds: Array.isArray(ru.genres) ? ru.genres.map((genre) => genre.id) : [],
+  };
+}
 async function searchTmdb(url, env) {
   if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
   const query = url.searchParams.get("q")?.trim() || "";
   if (query.length < 2 || query.length > 100) throw new ValidationError("Search must be 2–100 characters.");
-  const endpoint = new URL("https://api.themoviedb.org/3/search/multi");
-  endpoint.searchParams.set("query", query);
-  endpoint.searchParams.set("language", "ru-RU");
-  endpoint.searchParams.set("include_adult", "false");
-  const response = await fetch(endpoint, {
-    headers: { authorization: `Bearer ${env.TMDB_READ_TOKEN}`, accept: "application/json" },
-  });
-  if (!response.ok) return json({ error: "TMDB search failed." }, 502);
-  const payload = await response.json();
-  const matches = (payload.results || [])
-    .filter((item) => item.media_type === "movie" || item.media_type === "tv").slice(0, 8);
+  const payload = await tmdbGet(env, "search/multi", { query, language: "ru-RU", include_adult: "false" });
+  const matches = (payload.results || []).filter((item) => item.media_type === "movie" || item.media_type === "tv").slice(0, 8);
   const results = await Promise.all(matches.map(async (item) => {
-    let posterPath = item.poster_path;
-    const originalLanguage = /^[a-z]{2}$/.test(item.original_language || "") ? item.original_language : null;
-    if (originalLanguage) {
-      try {
-        const imagesUrl = new URL(`https://api.themoviedb.org/3/${item.media_type}/${item.id}/images`);
-        imagesUrl.searchParams.set("include_image_language", originalLanguage);
-        const imagesResponse = await fetch(imagesUrl, {
-          headers: { authorization: `Bearer ${env.TMDB_READ_TOKEN}`, accept: "application/json" },
-        });
-        if (imagesResponse.ok) {
-          const images = await imagesResponse.json();
-          const originals = (images.posters || [])
-            .filter((poster) => poster.iso_639_1 === originalLanguage
-                && /^\/[a-zA-Z0-9._-]+$/.test(poster.file_path || ""))
-            .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-          if (originals.length) posterPath = originals[0].file_path;
-        }
-      } catch {
-        // If no original-language poster can be fetched, keep the TMDB default.
-      }
+    try {
+      const details = await tmdbDetails(env, item.media_type, item.id);
+      return {
+        id: item.id,
+        category: item.media_type === "tv" ? "series" : details.genreIds.includes(16) ? "cartoons" : details.genreIds.includes(99) ? "documentaries" : "movies",
+        ...details,
+        title: details.title || item.title || item.name || "",
+        posterUrl: details.posterUrl || null,
+      };
+    } catch {
+      return {
+        id: item.id, mediaType: item.media_type,
+        category: item.media_type === "tv" ? "series" : "movies",
+        title: item.title || item.name || "",
+        titleEn: "", description: "", descriptionEn: "",
+        releaseYear: Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null,
+        posterUrl: null,
+      };
     }
-    return {
-      id: item.id, title: item.title || item.name || "",
-      titleEn: item.original_title || item.original_name || "",
-      description: item.overview || "", originalLanguage,
-      releaseYear: Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null,
-      category: item.media_type === "tv" ? "series" : "movies",
-      posterUrl: posterPath && /^\/[a-zA-Z0-9._-]+$/.test(posterPath)
-        ? `https://image.tmdb.org/t/p/w342${posterPath}` : null,
-    };
   }));
   return json({ results });
+}
+async function tmdbSuggestions(url, env) {
+  if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
+  const offset = Number(url.searchParams.get("offset") || 0);
+  if (!Number.isInteger(offset) || offset < 0 || offset > 2000) throw new ValidationError("Invalid offset.");
+  const rows = await env.DB.prepare(
+    "SELECT id, category, title_ru, title_en, release_year, poster_path FROM movies ORDER BY collection_order LIMIT 6 OFFSET ?"
+  ).bind(offset).all();
+  const candidates = await Promise.all(rows.results.map(async (movie) => {
+    try {
+      const payload = await tmdbGet(env, "search/multi", { query: movie.title_ru, language: "ru-RU", include_adult: "false" });
+      const matching = (payload.results || []).filter((item) => item.media_type === tmdbMediaType(movie.category));
+      const year = (item) => Number((item.release_date || item.first_air_date || "").slice(0,4)) || null;
+      const original = (value) => String(value || "").toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]+/gu," ").trim();
+      const movieName = original(movie.title_ru);
+      const ranked = matching.map((item) => {
+        const itemName = original(item.title || item.name);
+        const same = movieName === itemName;
+        const yearMatch = movie.release_year && year(item) === movie.release_year;
+        const yearDiff = movie.release_year && year(item) ? Math.abs(year(item) - movie.release_year) : null;
+        const score = (same ? 70 : (movieName.includes(itemName) || itemName.includes(movieName)) ? 25 : 0)
+          + (yearMatch ? 30 : (yearDiff !== null && yearDiff <= 1) ? 12 : 0);
+        return { item, score };
+      }).sort((a,b)=>b.score-a.score);
+      const top = ranked[0];
+      if (!top) return { movieId: movie.id, movieTitle: movie.title_ru, error: "No TMDB match", match: null };
+      const detail = await tmdbDetails(env,top.item.media_type,top.item.id);
+      return { movieId: movie.id, movieTitle: movie.title_ru, movieYear: movie.release_year,
+        match: { ...detail, score: top.score }, ambiguous: Boolean(ranked[1] && ranked[1].score >= top.score - 15),
+        needsReview: top.score < 70 || Boolean(ranked[1] && ranked[1].score >= top.score - 15),
+      };
+    } catch {
+      return { movieId: movie.id, movieTitle: movie.title_ru, error: "TMDB lookup failed", match: null };
+    }
+  }));
+  const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM movies").first();
+  return json({ candidates, offset, total: countRow.total });
+}
+async function applyTmdbMatch(request, env, movieId) {
+  const input = await readJson(request);
+  if (!Number.isSafeInteger(input.tmdbId) || input.tmdbId < 1 || !["movie","tv"].includes(input.mediaType)) throw new ValidationError("Invalid TMDB match.");
+  const movie = await env.DB.prepare("SELECT id, category, title_ru, description_ru, release_year FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." },404);
+  if (tmdbMediaType(movie.category) !== input.mediaType) throw new ValidationError("TMDB media type differs from movie category.");
+  const data = await tmdbDetails(env, input.mediaType, input.tmdbId);
+  if (data.posterUrl) {
+    const response = await fetch(data.posterUrl);
+    if (!response.ok) return json({ error: "Poster download failed; no data changed." }, 502);
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (!POSTER_TYPES.has(contentType) || declaredLength > MAX_POSTER_BYTES) return json({ error: "Invalid poster; no data changed." }, 502);
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > MAX_POSTER_BYTES) return json({ error: "Poster too large; no data changed." }, 502);
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO movie_posters(movie_id,content_type,image) VALUES(?,?,?)
+        ON CONFLICT(movie_id) DO UPDATE SET content_type=excluded.content_type,image=excluded.image,updated_at=CURRENT_TIMESTAMP`).bind(movieId,contentType,bytes),
+      env.DB.prepare(`UPDATE movies SET title_en = COALESCE(?,title_en), description_en = COALESCE(?,description_en),
+        description_ru = CASE WHEN description_ru IS NULL OR description_ru = '' THEN ? ELSE description_ru END,
+        release_year = COALESCE(release_year,?), poster_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
+          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,movieId),
+    ]);
+  } else {
+    await env.DB.prepare(`UPDATE movies SET title_en=COALESCE(?,title_en), description_en=COALESCE(?,description_en),
+      description_ru=CASE WHEN description_ru IS NULL OR description_ru='' THEN ? ELSE description_ru END,
+      release_year=COALESCE(release_year,?),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
+        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,movieId).run();
+  }
+  return json({ movie: await getCatalogMovie(env,movieId), posterReplaced: Boolean(data.posterUrl) });
 }
 
 async function archiveTmdbPoster(env, movieId, url) {
@@ -325,6 +419,7 @@ async function createMovie(request, env) {
 
   const titleEn = optionalText(input.titleEn, "English title", 160);
   const description = optionalText(input.description, "Description", 3000);
+  const descriptionEn = optionalText(input.descriptionEn, "English description", 3000);
   const releaseYear = input.releaseYear === null || input.releaseYear === "" || input.releaseYear === undefined
     ? null
     : Number(input.releaseYear);
@@ -340,8 +435,8 @@ async function createMovie(request, env) {
     INSERT INTO movies (
       category, title_ru, title_en, description_ru, description_en,
       poster_path, release_year, collection_order
-    ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-  `).bind(input.category, title, titleEn, description, posterFromTmdb || "/film-reel.png", releaseYear, Number(nextOrder?.value || 1)).run();
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/film-reel.png", releaseYear, Number(nextOrder?.value || 1)).run();
 
   const movieId = Number(insert.meta.last_row_id);
   const progressInput = {
@@ -596,9 +691,9 @@ async function editMovie(request, env, movieId) {
   }
   await env.DB.prepare(`
     UPDATE movies SET title_ru = ?, title_en = ?, category = ?,
-      description_ru = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      description_ru = ?, description_en = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
   `).bind(title, optionalText(input.titleEn, "English title", 160), input.category,
-    optionalText(input.description, "Description", 3000), year, movieId).run();
+    optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year, movieId).run();
   return json({ movie: await getCatalogMovie(env, movieId) });
 }
 
@@ -711,6 +806,9 @@ async function handleApi(request, env) {
   }
   if (url.pathname === "/api/profiles" && request.method === "GET") return json({ profiles: await listProfiles(env) });
   if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
+  if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
+  const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
+  if (tmdbApply && request.method === "POST") return applyTmdbMatch(request,env,Number(tmdbApply[1]));
   const profileMatch = url.pathname.match(/^\/api\/profiles\/(\d+)$/);
   if (profileMatch && request.method === "PUT") return updateProfile(request, env, assertMemberId(profileMatch[1]));
 
