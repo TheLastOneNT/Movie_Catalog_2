@@ -1318,8 +1318,23 @@ export default function Home() {
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 
               {selected.category === "series"
-                ? <SeasonTracker key={selected.id} movie={selected} language={language} onMovieChanged={(movie) =>
-                    setMovies((current) => current.map((item) => item.id === movie.id ? movie : item))} />
+                ? <>
+                    <SeasonTracker key={selected.id} movie={selected} language={language} onMovieChanged={(movie) =>
+                      setMovies((current) => current.map((item) => item.id === movie.id ? movie : item))} />
+                    <button type="button" className="legacySeriesHistory" onClick={toggleHistory} aria-expanded={historyOpen}>
+                      {language === "en" ? "Earlier viewing dates" : "Ранее записанные даты просмотров"}
+                    </button>
+                    {historyOpen && <div className="historyPanel">
+                      {historyLoading ? <p>…</p> : historyEvents.length ? <ul>
+                        {historyEvents.map((event)=><li key={event.id} className="watchEvent">
+                          <div><strong>{new Intl.DateTimeFormat(t.locale,{day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
+                            <div className="watchEventRating"><Stars value={event.rating || 0} compact onChange={(rating)=>updateWatchRating(event.id,rating)} label={t.modal.rating}/></div>
+                          </div>
+                          <button type="button" onClick={()=>setConfirmDelete({kind:"watch",id:event.id})}>{t.family.removeWatch}</button>
+                        </li>)}
+                      </ul> : <p>{t.modal.historyEmpty}</p>}
+                    </div>}
+                  </>
                 : <>
                   <div className="watchRecorder">
                     <h3>{t.family.recordWatch}</h3>

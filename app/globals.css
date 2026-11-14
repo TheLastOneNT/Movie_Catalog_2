@@ -597,3 +597,5 @@ img { display: block; max-width: 100%; }
 .watchEventRating { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px; }
 
 .seasonDeletePrompt { margin:12px 0; padding:12px; border:1px solid #9c6056; background:#241b1e; display:grid; gap:12px; color:#eee0d7; }
+
+.legacySeriesHistory { width:100%; padding:12px 14px; background:transparent; border:1px solid #554631; color:#d7b36b; text-align:left; cursor:pointer; margin:12px 0; }
