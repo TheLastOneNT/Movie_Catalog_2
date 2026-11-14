@@ -865,7 +865,6 @@ export default function Home() {
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
   const ratedCount = movies.filter((movie) => movie.progress.rating).length;
-  const fiveStarCount = movies.filter((movie) => movie.progress.rating === 5).length;
   const selected = movies.find((movie) => movie.id === selectedId) || null;
   const randomMode = randomIndex >= 0;
 
@@ -1035,7 +1034,6 @@ export default function Home() {
               <div><strong>{movies.length}</strong><span>В коллекции</span></div>
               <div><strong>{watchedCount}</strong><span>Просмотрено</span></div>
               <div><strong>{ratedCount}</strong><span>С оценкой</span></div>
-              <div><strong>{fiveStarCount}</strong><span>С оценкой 5/5</span></div>
               <div><strong>{watchlistCount}</strong><span>Хочу посмотреть</span></div>
             </div>
           </section>
