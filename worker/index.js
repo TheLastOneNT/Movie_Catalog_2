@@ -472,6 +472,7 @@ async function createMovie(request, env) {
   if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
   const normalized = normalizeProgressPatch(progressInput, {});
   await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
+  if (progressInput.rating != null) await registerRating(env,movieId,progressInput.rating,"manual");
   if (posterFromTmdb) await archiveTmdbPoster(env, movieId, posterFromTmdb);
 
   return json({ movie: await getCatalogMovie(env, movieId) }, 201);
@@ -542,6 +543,8 @@ async function resetProgress(env, movieId) {
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM rating_changes WHERE movie_id = ?").bind(movieId),
+    env.DB.prepare("DELETE FROM season_viewings WHERE movie_id = ?").bind(movieId),
     env.DB.prepare("DELETE FROM watch_history WHERE movie_id = ?").bind(movieId),
     env.DB.prepare("DELETE FROM movie_progress WHERE movie_id = ?").bind(movieId),
   ]);
@@ -905,6 +908,15 @@ async function restoreBackup(env, snapshot) {
     statements.push(env.DB.prepare(`INSERT INTO rating_changes(id,movie_id,source_type,source_id,rating,created_at)
       VALUES (?,?,?,?,?,?)`).bind(change.id,change.movieId,change.sourceType,change.sourceId ?? null,
        change.rating,change.createdAt || new Date().toISOString()));
+  }
+  if (snapshot.schemaVersion === 3) {
+    // Legacy exports contain a current rating but no historical rating source.
+    for (const movie of snapshot.movies) {
+      if (movie.progress.rating != null) {
+        statements.push(env.DB.prepare(`INSERT INTO rating_changes(movie_id,source_type,source_id,rating)
+          VALUES (?,'manual',NULL,?)`).bind(movie.id,movie.progress.rating));
+      }
+    }
   }
   for (const viewer of snapshot.watchAttendance) {
     statements.push(env.DB.prepare(

@@ -17,7 +17,7 @@ test("roundtrips poster blob bytes", () => {
 });
 
 test("accepts v4 backup including an empty season diary", () => {
- const upgraded={...minimal(),schemaVersion:4,seasonViewings:[]};
+ const upgraded={...minimal(),schemaVersion:4,seasonViewings:[],ratingChanges:[]};
  assert.deepEqual(validateBackup(upgraded),{movies:0,views:0,seasons:0,posters:0});
 });
 test("rejects v4 backup missing season diary to prevent data loss", () => {

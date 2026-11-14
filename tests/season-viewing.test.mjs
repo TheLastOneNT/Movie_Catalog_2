@@ -25,6 +25,8 @@ test("series record supports season and period with rating",()=>{
 });
 test("v4 backup includes per-viewing ratings and season history",()=>{
  assert.match(worker,/schemaVersion: 4/);
+ assert.match(worker,/ratingChanges: ratingRows.results/);
+ assert.match(worker,/refreshCurrentRating/);
  assert.match(worker,/seasonViewings: seasonEntries.results/);
  assert.match(worker,/watched_at, rating, created_at/);
  assert.match(worker,/DELETE FROM season_viewings/);
