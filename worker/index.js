@@ -674,10 +674,10 @@ async function refreshCurrentRating(env,movieId) {
   const row = await env.DB.prepare(`
     SELECT rating FROM (
       SELECT rating, substr(watched_at,1,10) AS viewed_date, id AS source_id, 2 AS priority
-      FROM watch_history WHERE movie_id=? AND rating IS NOT NULL
+      FROM watch_history WHERE movie_id=?
       UNION ALL
       SELECT rating, finished_at AS viewed_date, id AS source_id, 2 AS priority
-      FROM season_viewings WHERE movie_id=? AND finished_at IS NOT NULL AND rating IS NOT NULL
+      FROM season_viewings WHERE movie_id=? AND finished_at IS NOT NULL
       UNION ALL
       SELECT rating, '0000-00-00' AS viewed_date, id AS source_id, 1 AS priority
       FROM rating_changes WHERE movie_id=? AND source_type='manual'
@@ -812,8 +812,9 @@ async function addViewingEvent(request, env, movieId) {
   ).bind(row.id, viewer)));
   if (rating !== null) {
     await env.DB.prepare("UPDATE watch_history SET rating = ? WHERE id = ?").bind(rating,row.id).run();
-    await registerRating(env,movieId,rating,"watch",row.id);
   }
+  // Even an unrated latest viewing supersedes a previously rated older date.
+  await registerRating(env,movieId,rating,"watch",row.id);
   await refreshViewingSummary(env, movieId);
   return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) }, 201);
 }

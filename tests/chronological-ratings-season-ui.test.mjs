@@ -13,6 +13,8 @@ test("current rating is selected by viewing date, not last edit",()=>{
   assert.match(query,/substr\(watched_at,1,10\) AS viewed_date/);
   assert.match(query,/finished_at AS viewed_date/);
   assert.match(query,/ORDER BY viewed_date DESC/);
+  assert.match(query,/FROM watch_history WHERE movie_id=\?/);
+  assert.doesNotMatch(query,/FROM watch_history WHERE movie_id=\? AND rating IS NOT NULL/);
   assert.doesNotMatch(query,/ORDER BY rc.id DESC/);
 });
 test("season viewings are listed by dates rather than season number",()=>{
