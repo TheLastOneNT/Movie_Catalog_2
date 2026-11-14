@@ -338,7 +338,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.watchedAt}</span>
               <ViewingDateField disabled={form.status !== "watched"} value={form.lastWatchedAt} label={labels.addMovie.watchedAt} onChange={(value) => update("lastWatchedAt", value)} />
             </label>}
-            {!initialMovie && form.status === "watched" && <div className="addRating wideField">
+            {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
               <span>{labels.addMovie.rating}</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
