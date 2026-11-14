@@ -734,7 +734,10 @@ async function saveSeasonViewing(request,env,movieId) {
 async function removeSeasonViewing(env,movieId,entryId) {
   const existing = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
   if (!existing) return json({error:"Season viewing not found."},404);
-  await env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).run();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM rating_changes WHERE movie_id=? AND source_type='season' AND source_id=?").bind(movieId,entryId),
+    env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId),
+  ]);
   await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env,movieId);
   return json({seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId)});
@@ -812,8 +815,12 @@ async function addViewingEvent(request, env, movieId) {
 }
 
 async function deleteViewingEvent(env, movieId, eventId) {
-  const result = await env.DB.prepare("DELETE FROM watch_history WHERE id = ? AND movie_id = ?").bind(eventId, movieId).run();
-  if (!result.meta.changes) return json({ error: "Viewing event not found." }, 404);
+  const existing = await env.DB.prepare("SELECT id FROM watch_history WHERE id=? AND movie_id=?").bind(eventId,movieId).first();
+  if (!existing) return json({ error: "Viewing event not found." }, 404);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM rating_changes WHERE movie_id=? AND source_type='watch' AND source_id=?").bind(movieId,eventId),
+    env.DB.prepare("DELETE FROM watch_history WHERE id=? AND movie_id=?").bind(eventId,movieId),
+  ]);
   await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env, movieId);
   return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) });
