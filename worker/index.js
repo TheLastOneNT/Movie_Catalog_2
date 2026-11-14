@@ -481,6 +481,16 @@ async function createMovie(request, env) {
     throw new ValidationError("The release year is invalid.");
   }
 
+  if (input.wantToWatch != null && typeof input.wantToWatch !== "boolean")
+    throw new ValidationError("Invalid watchlist flag.");
+  if (input.status !== "watched" && input.rating != null) throw new ValidationError("Unwatched content cannot be rated.");
+  if (input.status === "watched" && input.category !== "series" && !input.lastWatchedAt)
+    throw new ValidationError("A watched movie needs its viewing date.");
+  if (input.status === "watched" && input.category === "series")
+    throw new ValidationError("Add the series to your watchlist and log seasons in a viewing cycle.");
+  if (input.status === "watched" && !Number.isInteger(input.rating))
+    throw new ValidationError("A watched movie requires a 1–5 rating.");
+  if (input.status === "watched") validateWatchDate(input.lastWatchedAt);
   const posterFromTmdb = tmdbPosterUrl(input.posterFromTmdb);
   const nextOrder = await env.DB.prepare(
     "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
@@ -493,11 +503,7 @@ async function createMovie(request, env) {
   `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1)).run();
 
   const movieId = Number(insert.meta.last_row_id);
-  if (input.wantToWatch != null && typeof input.wantToWatch !== "boolean")
-    throw new ValidationError("Invalid watchlist flag.");
-  if (input.status !== "watched" && input.rating != null) throw new ValidationError("Unwatched content cannot be rated.");
-  if (input.status === "watched" && input.category !== "series" && !input.lastWatchedAt)
-    throw new ValidationError("A watched movie needs its viewing date.");
+
   const progressInput = {
     status: input.status === "watched" ? "watched" : "unwatched",
     rating: input.status === "watched" && input.category !== "series" ? input.rating ?? null : null,
