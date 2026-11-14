@@ -719,3 +719,6 @@ img { display: block; max-width: 100%; }
   .posterLightboxContent { max-width:100%; max-height:calc(100dvh - 16px); height:calc(100dvh - 16px); }
   .posterLightboxContent img { max-height:calc(100dvh - 24px); }
 }
+
+.seriesCancelEmptyCycle { margin-top:10px; padding:8px 12px; min-height:34px; width:100%; background:transparent; border:1px solid #65504a; border-radius:6px; color:#b5a09d; font-size:12px; cursor:pointer; }
+.seriesCancelEmptyCycle:disabled { opacity:.45; }
