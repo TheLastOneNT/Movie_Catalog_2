@@ -12,7 +12,7 @@ test("films keep chronological latest viewing ratings",()=>{
   const sql=worker.slice(start,end);
   assert.match(sql,/substr\(wh\.watched_at,1,10\) AS viewed_date/);
   assert.match(sql,/ORDER BY viewed_date DESC/);
-  assert.doesNotMatch(sql,/ORDER BY rc\.id DESC LIMIT 1\s*\)/);
+  assert.match(sql,/FROM watch_history wh WHERE wh.movie_id=m.id/);
 });
 test("series average each season's most recent rated completed viewing",()=>{
   const sql=worker.slice(worker.indexOf("const EFFECTIVE_RATING_SQL"),worker.indexOf("function mapMovie("));
@@ -34,7 +34,7 @@ test("watch history shows date and compact editable rating in same row",()=>{
 test("consistent iPhone date picker avoids native intrinsic-width overflow",()=>{
   assert.match(page,/function CompactDateField/);
   assert.match(page,/className="seasonDateControl"/);
-  assert.match(page,/className="seasonDateValue/);
+  assert.match(page,/className=\{value \? "seasonDateValue"/);
   assert.match(css,/\.seasonDateControl input\[type="date"\] \{ position:absolute;/);
   assert.match(css,/\.seasonForm \{ display:flex; flex-direction:column; align-items:stretch;/);
   assert.match(page,/en \? "Finished" : "Закончили"/);
