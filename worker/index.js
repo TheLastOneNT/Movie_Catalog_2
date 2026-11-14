@@ -817,6 +817,12 @@ async function saveSeasonViewing(request,env,movieId) {
       VALUES (?,?,?,?,?,?)`).bind(movieId,cycleId,season,start,finish,rating).run();
     entryId=result.meta.last_row_id;
   }
+  // The cycle's start must reflect its historical first viewing, even when
+  // users log older seasons long after creating the cycle.
+  const earliest=await env.DB.prepare(`SELECT MIN(started_at) AS day FROM season_viewings
+    WHERE cycle_id=?`).bind(cycleId).first();
+  if(earliest?.day)await env.DB.prepare("UPDATE series_cycles SET started_at=? WHERE id=?")
+    .bind(earliest.day,cycleId).run();
   await registerRating(env,movieId,rating,"season",entryId);
   // Editing a completed cycle recomputes its date from its actual entries.
   if(cycle.outcome!=="watching"){
@@ -838,6 +844,10 @@ async function removeSeasonViewing(env,movieId,entryId) {
     env.DB.prepare("DELETE FROM rating_changes WHERE movie_id=? AND source_type='season' AND source_id=?").bind(movieId,entryId),
     env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId)
   ]);
+  const earliest=await env.DB.prepare(`SELECT MIN(started_at) AS day FROM season_viewings
+    WHERE cycle_id=?`).bind(old.cycleId).first();
+  if(earliest?.day)await env.DB.prepare("UPDATE series_cycles SET started_at=? WHERE id=?")
+    .bind(earliest.day,old.cycleId).run();
   const latest=await env.DB.prepare(`SELECT MAX(finished_at) AS day FROM season_viewings
     WHERE cycle_id=? AND rating IS NOT NULL AND finished_at IS NOT NULL`).bind(old.cycleId).first();
   const cycle=await env.DB.prepare("SELECT outcome,started_at AS startedAt FROM series_cycles WHERE id=?").bind(old.cycleId).first();
