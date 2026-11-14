@@ -353,6 +353,100 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 }
 
 
+function SeasonTracker({ movie, language, onMovieChanged }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [seasonNumber, setSeasonNumber] = useState(1);
+  const [startedAt, setStartedAt] = useState(todayLocal);
+  const [finishedAt, setFinishedAt] = useState("");
+  const [rating, setRating] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const en = language === "en";
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/movies/${movie.id}/seasons`, {credentials:"same-origin"});
+      if (!response.ok) throw new Error(en ? "Could not load seasons" : "Не удалось загрузить сезоны");
+      const data = await response.json();
+      setEntries(data.seasons || []);
+      setError("");
+    } catch(err) { setError(err.message); }
+    finally { setLoading(false); }
+  },[movie.id, en]);
+  useEffect(() => { refresh(); },[refresh]);
+  const reset = () => {setEditingId(null);setSeasonNumber(1);setStartedAt(todayLocal());setFinishedAt("");setRating(null);};
+  const submit = async (event) => {
+    event.preventDefault();
+    if (finishedAt && finishedAt < startedAt) {
+      setError(en ? "End date cannot precede the start" : "Дата завершения раньше даты начала");return;
+    }
+    setSaving(true);setError("");
+    try {
+      const response = await fetch(`/api/movies/${movie.id}/seasons`, {
+        method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+        body:JSON.stringify({id:editingId,seasonNumber,startedAt,finishedAt:finishedAt || null,rating:finishedAt ? rating : null}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to save season");
+      setEntries(data.seasons);
+      onMovieChanged(data.movie);
+      reset();
+    } catch(err) {setError(err.message);}
+    finally {setSaving(false);}
+  };
+  const remove = async (entryId) => {
+    if (!window.confirm(en ? "Delete this season viewing?" : "Удалить эту запись просмотра сезона?")) return;
+    setSaving(true);setError("");
+    try {
+      const response = await fetch(`/api/movies/${movie.id}/seasons/${entryId}`,{method:"DELETE",credentials:"same-origin"});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to delete");
+      setEntries(data.seasons);onMovieChanged(data.movie);
+    } catch(err) {setError(err.message);}
+    finally {setSaving(false);}
+  };
+  return <div className="seasonTracker">
+    <h3>{en ? "Season viewing diary" : "Дневник просмотра сезонов"}</h3>
+    <p>{en ? "Log the period you watched each season. Rewatches are separate entries." : "Укажи период просмотра сезона. При пересмотре добавь новую запись."}</p>
+    {loading ? <p>…</p> : entries.length > 0 && <ul className="seasonEntries">
+      {entries.map((entry) => <li key={entry.id}>
+        <div><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
+          <span>{entry.startedAt}{entry.finishedAt ? ` — ${entry.finishedAt}` : (en ? " — watching now" : " — смотрим сейчас")}</span>
+          {entry.rating != null && <span className="seasonRating">★ {entry.rating}/5</span>}
+        </div>
+        <div className="seasonActions">
+          <button type="button" disabled={saving} onClick={()=>{
+            setEditingId(entry.id);setSeasonNumber(entry.seasonNumber);setStartedAt(entry.startedAt);
+            setFinishedAt(entry.finishedAt || "");setRating(entry.rating);
+          }}>{en ? "Edit" : "Изменить"}</button>
+          <button type="button" disabled={saving} onClick={()=>remove(entry.id)}>{en ? "Delete" : "Удалить"}</button>
+        </div>
+      </li>)}
+    </ul>}
+    <form className="seasonForm" onSubmit={submit}>
+      <label>{en ? "Season #" : "Номер сезона"}
+        <input type="number" min="1" max="200" required value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}/>
+      </label>
+      <label>{en ? "Started" : "Начали"}
+        <input type="date" required value={startedAt} onChange={event=>setStartedAt(event.target.value)}/>
+      </label>
+      <label>{en ? "Finished (optional)" : "Закончили (необязательно)"}
+        <input type="date" min={startedAt} value={finishedAt} onChange={event=>{setFinishedAt(event.target.value);if(!event.target.value)setRating(null);}}/>
+      </label>
+      {finishedAt && <div className="seasonFormRating"><span>{en ? "Rating for this viewing" : "Оценка этого просмотра"}</span>
+        <Stars value={rating || 0} onChange={setRating} label={en ? "Season rating" : "Оценка сезона"} />
+      </div>}
+      {error && <p className="formError" role="alert">{error}</p>}
+      <div className="seasonActions">
+        <button type="submit" className="primaryButton" disabled={saving}>{saving ? "…" : editingId ? (en ? "Save changes" : "Сохранить изменения") : (en ? "Log season" : "Записать сезон")}</button>
+        {editingId && <button type="button" onClick={reset}>{en ? "Cancel" : "Отмена"}</button>}
+      </div>
+    </form>
+  </div>;
+}
+
 function PosterReviewPanel({ language, movies, onClose, onApplied }) {
   const [offset, setOffset] = useState(0);
   const [candidates, setCandidates] = useState([]);
@@ -496,6 +590,7 @@ export default function Home() {
 
   const [editingMovie, setEditingMovie] = useState(null);
   const [watchDate, setWatchDate] = useState(todayLocal);
+  const [watchRating, setWatchRating] = useState(null);
   const watchViewers = [1, 2]; // All logged views belong to the household.
   const [watchSubmitting, setWatchSubmitting] = useState(false);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -604,6 +699,7 @@ export default function Home() {
     setHistoryDates([]);
     setHistoryEvents([]);
     setWatchDate(todayLocal());
+    setWatchRating(null);
 
   }, [selectedId]);
 
@@ -726,7 +822,7 @@ export default function Home() {
       const response = await fetch(`/api/movies/${selectedId}/watches`, {
         method: "POST", credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ date: watchDate, viewers: watchViewers }),
+        body: JSON.stringify({ date: watchDate, viewers: watchViewers, rating: watchRating }),
       });
       if (!response.ok) throw new Error("Failed to record watch.");
       const data = await response.json();
@@ -734,6 +830,7 @@ export default function Home() {
       setHistoryOpen(true);
       setHistoryEvents(data.events);
       setHistoryDates(data.events.map((event) => event.watchedAt));
+      setWatchRating(null);
       setSyncState("synced");
     } catch { setSyncState("error"); }
     finally { setWatchSubmitting(false); }
@@ -1191,39 +1288,42 @@ export default function Home() {
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
 
-              <div className="familyRatings"><span>{t.modal.rating}</span>
+              <div className="familyRatings"><span>{language === "en" ? "Current rating" : "Актуальная оценка"}</span>
                 <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id, rating)} label={t.modal.rating} />
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 
-              <div className="watchRecorder">
-                <h3>{t.family.recordWatch}</h3>
-                <label className="watchDate"><span>{t.modal.date}</span><input type="date" value={watchDate} max={todayLocal()} onChange={(event) => setWatchDate(event.target.value)} /></label>
-
-                <button className="primaryButton recordButton" type="button" onClick={recordWatch} disabled={watchSubmitting || syncState === "offline"}>{watchSubmitting ? t.sync.saving : t.family.recordWatch}</button>
-              </div>
-
-              <div className="watchCount">
-                <span>{t.modal.watches}</span>
-                <div>
-                  <strong>{selected.progress.watchCount || 0}</strong>
-                  <button type="button" className="historyInfo" onClick={toggleHistory} aria-label={t.modal.showHistory} aria-expanded={historyOpen}>
-                    <Icon name="info" size={18} />
-                  </button>
-                </div>
-              </div>
-              {historyOpen && (
-                <div className="historyPanel">
-                  <span>{t.modal.history}</span>
-                  {historyLoading ? <p>{t.modal.historyLoading}</p> : historyDates.length ? (
-                    <ul>{historyEvents.map((event) => <li key={event.id} className="watchEvent">
-                    <div><strong>{new Intl.DateTimeFormat(t.locale, { day: "numeric", month: "long", year: "numeric" }).format(new Date(event.watchedAt))}</strong>
-</div>
-                    <button type="button" onClick={() => setConfirmDelete({ kind: "watch", id: event.id })} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
-                  </li>)}</ul>
-                  ) : <p>{t.modal.historyEmpty}</p>}
-                </div>
-              )}
+              {selected.category === "series"
+                ? <SeasonTracker key={selected.id} movie={selected} language={language} onMovieChanged={(movie) =>
+                    setMovies((current) => current.map((item) => item.id === movie.id ? movie : item))} />
+                : <>
+                  <div className="watchRecorder">
+                    <h3>{t.family.recordWatch}</h3>
+                    <label className="watchDate"><span>{t.modal.date}</span><input type="date" value={watchDate} max={todayLocal()} onChange={(event) => setWatchDate(event.target.value)} /></label>
+                    <div className="watchRatingInput">
+                      <span>{language === "en" ? "Rating for this viewing (optional)" : "Оценка этого просмотра (необязательно)"}</span>
+                      <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
+                    </div>
+                    <button className="primaryButton recordButton" type="button" onClick={recordWatch} disabled={watchSubmitting || syncState === "offline"}>{watchSubmitting ? t.sync.saving : t.family.recordWatch}</button>
+                  </div>
+                  <div className="watchCount">
+                    <span>{t.modal.watches}</span><div><strong>{selected.progress.watchCount || 0}</strong>
+                      <button type="button" className="historyInfo" onClick={toggleHistory} aria-label={t.modal.showHistory} aria-expanded={historyOpen}><Icon name="info" size={18} /></button>
+                    </div>
+                  </div>
+                  {historyOpen && <div className="historyPanel">
+                    <span>{t.modal.history}</span>
+                    {historyLoading ? <p>{t.modal.historyLoading}</p> : historyEvents.length ? <ul>
+                      {historyEvents.map((event) => <li key={event.id} className="watchEvent">
+                        <div><strong>{new Intl.DateTimeFormat(t.locale, {day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
+                          {event.rating != null && <span className="watchEventRating">★ {event.rating}/5</span>}
+                        </div>
+                        <button type="button" onClick={() => setConfirmDelete({kind:"watch",id:event.id})} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
+                      </li>)}
+                    </ul> : <p>{t.modal.historyEmpty}</p>}
+                  </div>}
+                </>
+              }
 
               {selected.progress.notes && <p className="legacyNotes">{t.family.legacyNotes}: {selected.progress.notes}</p>}
               <label className="notesField">
