@@ -499,3 +499,23 @@ img { display: block; max-width: 100%; }
   .movieCardList .cardDetailsButton { font-size: 13px; min-height: 40px; }
   .movieCardList .movieMeta { align-items: flex-start; }
 }
+
+/* Discovery-first homepage: categories already live in the upper tab bar. */
+.discoveryIntro { align-items: center; margin-bottom: 22px; }
+.discoveryIntro h1 { margin: 0; }
+.collectionInfoButton { width: 38px; height: 38px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid rgba(214,173,99,.38); border-radius: 50%; background: rgba(214,173,99,.05); color: var(--gold-bright); cursor: pointer; }
+.collectionInfoButton:hover { background: rgba(214,173,99,.18); }
+.collectionInfoBackdrop { position: fixed; z-index: 155; inset: 0; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: rgba(2,2,3,.84); backdrop-filter: blur(12px); }
+.collectionInfoDialog { position: relative; width: min(440px,100%); padding: 34px 26px 26px; border: 1px solid rgba(214,173,99,.3); border-radius: 8px; background: #151417; box-shadow: 0 24px 75px rgba(0,0,0,.55); }
+.collectionInfoDialog h2 { margin: 12px 0 25px; font: 32px Georgia, serif; color: #f0ece5; }
+.collectionInfoStats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.collectionInfoStats div { display: grid; gap: 8px; min-height: 88px; align-content: center; padding: 14px; border: 1px solid var(--line); background: #0e0e12; }
+.collectionInfoStats strong { color: var(--gold-bright); font: 30px Georgia, serif; }
+.collectionInfoStats span { color: #b1adb0; font-size: 12px; }
+@media (max-width: 680px) {
+  .discoveryIntro { display: flex; flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 18px; }
+  .discoveryIntro h1 { font-size: clamp(31px, 8vw, 40px); }
+  .discoveryIntro .catalogRandom { width: 100%; justify-content: center; min-height: 50px; }
+  .collectionInfoButton { width: 38px; height: 38px; }
+  .collectionInfoDialog { padding: 32px 20px 23px; }
+}

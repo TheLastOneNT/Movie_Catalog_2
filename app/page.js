@@ -413,6 +413,7 @@ export default function Home() {
   const [historyDates, setHistoryDates] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [collectionInfoOpen, setCollectionInfoOpen] = useState(false);
   const requestQueue = useRef(Promise.resolve());
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
@@ -503,7 +504,7 @@ export default function Home() {
   }, [selectedId]);
 
   useEffect(() => {
-    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen;
+    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen || collectionInfoOpen;
     document.body.style.overflow = overlayOpen ? "hidden" : "";
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
@@ -513,6 +514,7 @@ export default function Home() {
         setAccessPromptOpen(false);
         setAddMovieOpen(false);
         setInstallGuideOpen(false);
+        setCollectionInfoOpen(false);
 
         pendingAction.current = null;
       }
@@ -522,7 +524,7 @@ export default function Home() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId]);
+  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, collectionInfoOpen]);
 
   const unlock = async (accessKey) => {
     try {
@@ -866,24 +868,22 @@ export default function Home() {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
-      if (status === "rated" && !movie.progress.rating) return false;
       if (status === "favorites" && !personalFor(movie, activeMember).isFavorite) return false;
       if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
-      if (status === "rewatch" && (movie.progress.status !== "watched" || !(personalFor(movie, 1).isFavorite || (movie.progress.rating || 0) >= 4 || movie.progress.isFavorite))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
 
     if (sort === "random") result = randomizeMovies(result, shuffleSeed);
-    if (sort === "title") result = [...result].sort((a, b) => a.title.localeCompare(b.title, t.locale));
     if (sort === "rating") result = [...result].sort((a, b) => (b.progress.rating || 0) - (a.progress.rating || 0));
-    if (sort === "recent") result = [...result].sort((a, b) => (b.progress.lastWatchedAt || "").localeCompare(a.progress.lastWatchedAt || ""));
     if (sort === "oldest") result = sortOldestWatched(result);
     return result;
   }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const favoriteCount = movies.filter((movie) => personalFor(movie, activeMember).isFavorite).length;
+  const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
+  const ratedCount = movies.filter((movie) => movie.progress.rating).length;
   const selected = movies.find((movie) => movie.id === selectedId) || null;
   const randomMode = randomIndex >= 0;
 
@@ -963,6 +963,7 @@ export default function Home() {
             <Icon name="cloud" size={15} />
             {t.sync[syncState] || t.sync.synced}
           </span>
+          <button type="button" className="collectionInfoButton" onClick={() => setCollectionInfoOpen(true)} aria-label="Информация о коллекции" title="Информация о коллекции"><Icon name="info" size={19} /></button>
           <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
             <Icon name="plus" size={18} /><span>{t.nav.add}</span>
           </button>
@@ -972,21 +973,11 @@ export default function Home() {
       {syncState === "offline" && <div className="offlineBanner">{t.sync.offline}</div>}
 
       <section className="catalogSection" id="top">
-        <div className="sectionIntro catalogIntro">
-          <div>
-            <span className="sectionKicker">{t.catalog.eyebrow}</span>
-            <h1>{t.categories[category]}</h1>
-          </div>
-          <div className="catalogSummary">
-            <div className="catalogStats" aria-label={t.catalog.stats}>
-              <span><strong>{movies.length}</strong>{t.hero.total}</span>
-              <span><strong>{watchedCount}</strong>{t.hero.watched}</span>
-              <span><strong>{favoriteCount}</strong>{t.hero.favorites}</span>
-            </div>
-            <button type="button" className="catalogRandom" onClick={chooseRandom}>
-              <Icon name="shuffle" size={18} /> {t.nav.random}
-            </button>
-          </div>
+        <div className="sectionIntro catalogIntro discoveryIntro">
+          <h1>Что посмотрим?</h1>
+          <button type="button" className="catalogRandom" onClick={chooseRandom} disabled={!filtered.length}>
+            <Icon name="shuffle" size={18} /> {t.nav.random}
+          </button>
         </div>
 
         <div className="toolbar">
@@ -998,18 +989,13 @@ export default function Home() {
           <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label={t.modal.status}>
             <option value="all">{t.catalog.allStatuses}</option>
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
-            <option value="rated">{t.catalog.rated}</option>
-            <option value="favorites">{t.catalog.favorites}</option>
             <option value="watchlist">{t.family.watchlist}</option>
-            <option value="rewatch">{t.family.rewatch}</option>
+            <option value="favorites">{t.catalog.favorites}</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
-            <option value="random">{t.catalog.randomOrder}</option>
-            <option value="collection">{t.catalog.collectionOrder}</option>
-            <option value="title">{t.catalog.titleOrder}</option>
-            <option value="rating">{t.catalog.ratingOrder}</option>
-            <option value="recent">{t.catalog.recentOrder}</option>
-            <option value="oldest">{t.catalog.oldestOrder}</option>
+            <option value="random">Обычный порядок</option>
+            <option value="rating">Сначала лучшие</option>
+            <option value="oldest">Давно не смотрели</option>
           </select>
           <div className="viewSwitch" aria-label={t.nav.collection}>
             <button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid"><Icon name="grid" size={18} /></button>
@@ -1060,6 +1046,23 @@ export default function Home() {
           </button>
         </div>
       </footer>
+
+      {collectionInfoOpen && (
+        <div className="collectionInfoBackdrop" role="presentation" onMouseDown={() => setCollectionInfoOpen(false)}>
+          <section className="collectionInfoDialog" role="dialog" aria-modal="true" aria-labelledby="collectionInfoTitle" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modalClose" onClick={() => setCollectionInfoOpen(false)} aria-label="Закрыть"><Icon name="close" size={20} /></button>
+            <span className="sectionKicker">MOVIE CATALOG</span>
+            <h2 id="collectionInfoTitle">Ваша фильмотека</h2>
+            <div className="collectionInfoStats">
+              <div><strong>{movies.length}</strong><span>В коллекции</span></div>
+              <div><strong>{watchedCount}</strong><span>Просмотрено</span></div>
+              <div><strong>{ratedCount}</strong><span>С оценкой</span></div>
+              <div><strong>{favoriteCount}</strong><span>В избранном</span></div>
+              <div><strong>{watchlistCount}</strong><span>Хочу посмотреть</span></div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {selected && (
         <div className="modalBackdrop" role="presentation" onMouseDown={closeMovie}>

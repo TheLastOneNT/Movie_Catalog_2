@@ -15,8 +15,8 @@ test("random order is stable for one seed and changes with another", () => {
   assert.notDeepEqual(randomizeMovies(largerCatalog, 456).map((movie) => movie.id), first);
 });
 
-test("oldest watched order keeps never-watched titles first", () => {
-  assert.deepEqual(sortOldestWatched(movies).map((movie) => movie.id), [2, 3, 1]);
+test("oldest watched order prioritizes long-unseen films and puts never-watched last", () => {
+  assert.deepEqual(sortOldestWatched(movies).map((movie) => movie.id), [3, 1, 2]);
 });
 
 test("legacy statuses are presented as unwatched", () => {
