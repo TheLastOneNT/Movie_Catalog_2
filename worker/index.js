@@ -199,6 +199,22 @@ async function saveNormalizedProgress(env, movieId, normalized, now) {
   return mapProgress(await getProgress(env, movieId));
 }
 
+async function updateSharedRating(request, env, movieId) {
+  const input = await readJson(request);
+  if (!Object.prototype.hasOwnProperty.call(input, "rating") ||
+      !(input.rating === null || (Number.isInteger(input.rating) && input.rating >= 1 && input.rating <= 5))) {
+    throw new ValidationError("Shared rating must be 1–5 or null.");
+  }
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  if (!movie) return json({ error: "Movie not found." }, 404);
+  await env.DB.prepare(`
+    INSERT INTO movie_progress(movie_id, status, rating, updated_at)
+    VALUES (?, 'unwatched', ?, ?)
+    ON CONFLICT(movie_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at
+  `).bind(movieId, input.rating, new Date().toISOString()).run();
+  return json({ rating: input.rating });
+}
+
 async function updateProgress(request, env, movieId) {
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
@@ -244,19 +260,40 @@ async function searchTmdb(url, env) {
   });
   if (!response.ok) return json({ error: "TMDB search failed." }, 502);
   const payload = await response.json();
-  const results = (payload.results || [])
-    .filter((item) => item.media_type === "movie" || item.media_type === "tv")
-    .slice(0, 8)
-    .map((item) => ({
-      id: item.id,
-      title: item.title || item.name || "",
+  const matches = (payload.results || [])
+    .filter((item) => item.media_type === "movie" || item.media_type === "tv").slice(0, 8);
+  const results = await Promise.all(matches.map(async (item) => {
+    let posterPath = item.poster_path;
+    const originalLanguage = /^[a-z]{2}$/.test(item.original_language || "") ? item.original_language : null;
+    if (originalLanguage) {
+      try {
+        const imagesUrl = new URL(`https://api.themoviedb.org/3/${item.media_type}/${item.id}/images`);
+        imagesUrl.searchParams.set("include_image_language", originalLanguage);
+        const imagesResponse = await fetch(imagesUrl, {
+          headers: { authorization: `Bearer ${env.TMDB_READ_TOKEN}`, accept: "application/json" },
+        });
+        if (imagesResponse.ok) {
+          const images = await imagesResponse.json();
+          const originals = (images.posters || [])
+            .filter((poster) => poster.iso_639_1 === originalLanguage
+                && /^\/[a-zA-Z0-9._-]+$/.test(poster.file_path || ""))
+            .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+          if (originals.length) posterPath = originals[0].file_path;
+        }
+      } catch {
+        // If no original-language poster can be fetched, keep the TMDB default.
+      }
+    }
+    return {
+      id: item.id, title: item.title || item.name || "",
       titleEn: item.original_title || item.original_name || "",
-      description: item.overview || "",
+      description: item.overview || "", originalLanguage,
       releaseYear: Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null,
       category: item.media_type === "tv" ? "series" : "movies",
-      posterUrl: item.poster_path && /^\/[a-zA-Z0-9._-]+$/.test(item.poster_path)
-        ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : null,
-    }));
+      posterUrl: posterPath && /^\/[a-zA-Z0-9._-]+$/.test(posterPath)
+        ? `https://image.tmdb.org/t/p/w342${posterPath}` : null,
+    };
+  }));
   return json({ results });
 }
 
@@ -677,6 +714,8 @@ async function handleApi(request, env) {
   const profileMatch = url.pathname.match(/^\/api\/profiles\/(\d+)$/);
   if (profileMatch && request.method === "PUT") return updateProfile(request, env, assertMemberId(profileMatch[1]));
 
+  const ratingMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/rating$/);
+  if (ratingMatch && request.method === "PATCH") return updateSharedRating(request, env, Number(ratingMatch[1]));
   const personalMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/member\/(\d+)$/);
   if (personalMatch && request.method === "PATCH") return updateMemberProgress(request, env, Number(personalMatch[1]), assertMemberId(personalMatch[2]));
 

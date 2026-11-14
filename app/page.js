@@ -88,10 +88,6 @@ function AccessScreen({ mode, language, onLanguageChange, onUnlock, onClose }) {
   return (
     <div className="accessPage" role={mode === "checking" ? undefined : "presentation"} onMouseDown={onClose}>
       <div className="accessBackdrop" />
-      <div className="accessLanguage" aria-label="Language" onMouseDown={(event) => event.stopPropagation()}>
-        <button type="button" className={language === "ru" ? "active" : ""} onClick={() => onLanguageChange("ru")}>RU</button>
-        <button type="button" className={language === "en" ? "active" : ""} onClick={() => onLanguageChange("en")}>EN</button>
-      </div>
       <section
         className="accessCard"
         role={mode === "checking" ? undefined : "dialog"}
@@ -181,7 +177,7 @@ function ProfileSettings({ profiles, labels, onClose, onSave }) {
   );
 }
 
-function MovieCard({ movie, language, labels, onOpen, onUpdate, view, memberId }) {
+function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, memberId }) {
   const watched = movie.progress.status === "watched";
   const personal = personalFor(movie, memberId);
   const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
@@ -211,15 +207,15 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, view, memberId }
           }}
           aria-label={watched ? labels.catalog.watched : labels.catalog.unwatched}
         >
-          <Icon name={watched ? "check" : "alert"} size={watched ? 17 : 16} />
+          <Icon name={watched ? "check" : "calendar"} size={watched ? 17 : 16} />
         </button>
         <div className="posterShade" />
       </div>
       <div className="movieMeta">
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
         <div className="cardBottom">
-          <Stars value={personal.rating || 0} onChange={(rating) => onUpdate(movie.id, { rating })} compact label={labels.modal.rating} />
-          <button type="button" className="mobileRating" onClick={() => onOpen(movie.id)}>{personal.rating ? `★ ${personal.rating}/5` : labels.family.rate}</button>
+          <Stars value={movie.progress.rating || 0} onChange={(rating) => onRate(movie.id, rating)} compact label={labels.modal.rating} />
+          <button type="button" className="mobileRating" onClick={() => onOpen(movie.id)}>{movie.progress.rating ? `★ ${movie.progress.rating}/5` : labels.family.rate}</button>
           <span className="moreLink">{labels.catalog.details} <Icon name="chevron" size={14} /></span>
         </div>
       </div>
@@ -496,10 +492,8 @@ export default function Home() {
     const savedMember = Number(window.localStorage.getItem("movie-catalog-member"));
     if (savedMember === 1 || savedMember === 2) setActiveMember(savedMember);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
-    if (savedLanguage === "en") {
-      setLanguage("en");
-      document.documentElement.lang = "en";
-    }
+    setLanguage("ru");
+    document.documentElement.lang = "ru";
 
     const initialize = async () => {
       try {
@@ -604,6 +598,25 @@ export default function Home() {
     return undefined;
   };
 
+
+  const updateSharedRating = (movieId, rating) => {
+    if (syncState === "offline") return;
+    setMovies((current) => current.map((movie) => movie.id !== movieId ? movie : ({
+      ...movie, progress: { ...movie.progress, rating },
+    })));
+    setSyncState("saving");
+    requestQueue.current = requestQueue.current.then(async () => {
+      const response = await fetch(`/api/movies/${movieId}/rating`, {
+        method: "PATCH", credentials: "same-origin",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ rating }),
+      });
+      if (!response.ok) throw new Error("Could not save family rating.");
+      setSyncState("synced");
+    }).catch(async () => {
+      await loadCatalog();
+      setSyncState("error");
+    });
+  };
 
   const updateMember = (movieId, patch, selectedMember = activeMember) => {
     if (syncState === "offline") return;
@@ -898,11 +911,11 @@ export default function Home() {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
-      if (status === "rated" && !personalFor(movie, activeMember).rating) return false;
+      if (status === "rated" && !movie.progress.rating) return false;
       if (status === "favorites" && !personalFor(movie, activeMember).isFavorite) return false;
       if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
       if (status === "rewatch" && (movie.progress.status !== "watched" || !(profiles.some((person) => {
-        const own = personalFor(movie, person.id); return own.isFavorite || (own.rating || 0) >= 4;
+        const own = personalFor(movie, person.id); return own.isFavorite;
       }) || (movie.progress.rating || 0) >= 4 || movie.progress.isFavorite))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
@@ -910,7 +923,7 @@ export default function Home() {
 
     if (sort === "random") result = randomizeMovies(result, shuffleSeed);
     if (sort === "title") result = [...result].sort((a, b) => a.title.localeCompare(b.title, t.locale));
-    if (sort === "rating") result = [...result].sort((a, b) => (personalFor(b, activeMember).rating || 0) - (personalFor(a, activeMember).rating || 0));
+    if (sort === "rating") result = [...result].sort((a, b) => (b.progress.rating || 0) - (a.progress.rating || 0));
     if (sort === "recent") result = [...result].sort((a, b) => (b.progress.lastWatchedAt || "").localeCompare(a.progress.lastWatchedAt || ""));
     if (sort === "oldest") result = sortOldestWatched(result);
     return result;
@@ -1001,10 +1014,6 @@ export default function Home() {
             <Icon name="cloud" size={15} />
             {t.sync[syncState] || t.sync.synced}
           </span>
-          <div className="languageSwitch" aria-label="Language">
-            <button type="button" className={language === "ru" ? "active" : ""} onClick={() => changeLanguage("ru")}>RU</button>
-            <button type="button" className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")}>EN</button>
-          </div>
           <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
             <Icon name="plus" size={18} /><span>{t.nav.add}</span>
           </button>
@@ -1073,6 +1082,7 @@ export default function Home() {
                 labels={t}
                 onOpen={openMovie}
                 onUpdate={updateMember}
+                onRate={updateSharedRating}
                 memberId={activeMember}
                 view={view}
               />
@@ -1138,14 +1148,8 @@ export default function Home() {
                 {personal(selected).isFavorite ? t.modal.favorite : t.modal.addFavorite}
               </button>
 
-              <div className="familyRatings"><span>{t.modal.rating}</span>
-                {profiles.map((person) => <div className="familyRatingRow" key={person.id}>
-                  <strong>{person.name}</strong>
-                  <Stars value={personalFor(selected, person.id).rating || 0} onChange={(rating) => {
-                    updateMember(selected.id, { rating }, person.id);
-                  }} label={person.name} />
-                </div>)}
-                {selected.progress.rating ? <small>{t.family.legacyRating}: {selected.progress.rating}/5</small> : null}
+              <div className="familyRatings"><span>{t.modal.rating} · общая для семьи</span>
+                <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id, rating)} label={t.modal.rating} />
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 
