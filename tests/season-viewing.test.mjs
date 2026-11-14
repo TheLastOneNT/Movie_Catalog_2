@@ -19,16 +19,16 @@ test("movie watch accepts a rating per occurrence and preserves history",()=>{
 test("series record supports season and period with rating",()=>{
  assert.match(worker,/season_number AS seasonNumber/);
  assert.match(worker,/finished_at AS finishedAt/);
- assert.match(worker,/if \(!finish && rating !== null\)/);
+ assert.match(worker,/if\(!finish&&rating!==null\)/);
  assert.match(page,/function SeasonTracker/);
- assert.match(page,/seasonNumber,startedAt,finishedAt:finishedAt \|\| null,rating:/);
+ assert.match(page,/seasonNumber,startedAt,finishedAt:finishedAt\|\|null,rating:/);
 });
-test("v4 backup includes per-viewing ratings and season history",()=>{
- assert.match(worker,/schemaVersion: 4/);
+test("v5 backup includes cycle separation and per-viewing ratings",()=>{
+ assert.match(worker,/schemaVersion: 5/);
  assert.match(worker,/ratingChanges: ratingRows.results/);
  assert.match(worker,/refreshCurrentRating/);
  assert.match(worker,/seasonViewings: seasonEntries.results/);
  assert.match(worker,/watched_at, rating, created_at/);
  assert.match(worker,/DELETE FROM season_viewings/);
- assert.match(backup,/schemaVersion === 4/);
+ assert.match(backup,/\[3,4,5\]\.includes\(snapshot\.schemaVersion\)/);
 });
