@@ -146,9 +146,9 @@ function todayLocal() {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
-function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, memberId }) {
+function MovieCard({ movie, language, labels, onOpen, view }) {
   const watched = movie.progress.status === "watched";
-  const personal = personalFor(movie, memberId);
+  const rating = movie.progress.rating;
   const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
 
   return (
@@ -158,36 +158,19 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, me
         <span className="categoryBadge">{labels.categories[movie.category]}</span>
         <div className="posterShade" />
       </div>
-      <div className="cardQuickActions" aria-label="Действия с фильмом">
-        <button
-          type="button"
-          className={personal.isFavorite ? "favoriteButton active" : "favoriteButton"}
-          onClick={(event) => {
-            event.stopPropagation();
-            onUpdate(movie.id, { isFavorite: !personal.isFavorite });
-          }}
-          aria-label={personal.isFavorite ? labels.modal.favorite : labels.modal.addFavorite}
-        >
-          <Icon name="heart" size={16} filled={movie.progress.isFavorite} />
-        </button>
-        <button
-          type="button"
-          className={watched ? "watchedButton watched" : "watchedButton unwatched"}
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen(movie.id);
-          }}
-          aria-label={watched ? labels.catalog.watched : labels.catalog.unwatched}
-        >
-          <Icon name={watched ? "check" : "calendar"} size={watched ? 17 : 16} />
-        </button>
-      </div>
+      {view !== "list" && (rating || watched) && (
+        <span className={rating ? "cardRatingBadge" : "cardRatingBadge viewed"} aria-label={rating ? `Оценка: ${rating} из 5` : "Просмотрено, без оценки"}>
+          {rating ? `★ ${rating}/5` : <Icon name="check" size={17} />}
+        </span>
+      )}
       <div className="movieMeta">
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
-        <div className="cardBottom">
-          <Stars value={movie.progress.rating || 0} onChange={(rating) => onRate(movie.id, rating)} compact label={labels.modal.rating} />
-          {view === "list" && <button type="button" className="moreLink cardDetailsButton" onClick={() => onOpen(movie.id)} aria-label={labels.catalog.details + ": " + title}>{labels.catalog.details} <Icon name="chevron" size={14} /></button>}
-        </div>
+        {view === "list" && (
+          <div className="cardBottom">
+            {(rating || watched) && <span className={rating ? "listRatingLabel" : "listRatingLabel viewed"}>{rating ? `★ ${rating}/5` : "✓ Просмотрено"}</span>}
+            <button type="button" className="moreLink cardDetailsButton" onClick={() => onOpen(movie.id)} aria-label={labels.catalog.details + ": " + title}>{labels.catalog.details} <Icon name="chevron" size={14} /></button>
+          </div>
+        )}
       </div>
     </article>
   );
@@ -868,7 +851,6 @@ export default function Home() {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
-      if (status === "favorites" && !personalFor(movie, activeMember).isFavorite) return false;
       if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
@@ -881,9 +863,9 @@ export default function Home() {
   }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
-  const favoriteCount = movies.filter((movie) => personalFor(movie, activeMember).isFavorite).length;
   const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
   const ratedCount = movies.filter((movie) => movie.progress.rating).length;
+  const fiveStarCount = movies.filter((movie) => movie.progress.rating === 5).length;
   const selected = movies.find((movie) => movie.id === selectedId) || null;
   const randomMode = randomIndex >= 0;
 
@@ -990,7 +972,6 @@ export default function Home() {
             <option value="all">{t.catalog.allStatuses}</option>
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
             <option value="watchlist">{t.family.watchlist}</option>
-            <option value="favorites">{t.catalog.favorites}</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
             <option value="random">Обычный порядок</option>
@@ -1013,9 +994,6 @@ export default function Home() {
                 language={language}
                 labels={t}
                 onOpen={openMovie}
-                onUpdate={updateMember}
-                onRate={updateSharedRating}
-                memberId={activeMember}
                 view={view}
               />
             ))}
@@ -1057,7 +1035,7 @@ export default function Home() {
               <div><strong>{movies.length}</strong><span>В коллекции</span></div>
               <div><strong>{watchedCount}</strong><span>Просмотрено</span></div>
               <div><strong>{ratedCount}</strong><span>С оценкой</span></div>
-              <div><strong>{favoriteCount}</strong><span>В избранном</span></div>
+              <div><strong>{fiveStarCount}</strong><span>С оценкой 5/5</span></div>
               <div><strong>{watchlistCount}</strong><span>Хочу посмотреть</span></div>
             </div>
           </section>
@@ -1086,15 +1064,6 @@ export default function Home() {
               <h2>{language === "en" && selected.titleEn ? selected.titleEn : selected.title}</h2>
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
-
-              <button
-                type="button"
-                className={personal(selected).isFavorite ? "modalFavorite active" : "modalFavorite"}
-                onClick={() => updateMember(selected.id, { isFavorite: !personal(selected).isFavorite })}
-              >
-                <Icon name="heart" size={18} filled={personal(selected).isFavorite} />
-                {personal(selected).isFavorite ? t.modal.favorite : t.modal.addFavorite}
-              </button>
 
               <div className="familyRatings"><span>{t.modal.rating}</span>
                 <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id, rating)} label={t.modal.rating} />

@@ -519,3 +519,21 @@ img { display: block; max-width: 100%; }
   .collectionInfoButton { width: 38px; height: 38px; }
   .collectionInfoDialog { padding: 32px 20px 23px; }
 }
+
+/* Rating is informational on the catalog cards; the detail modal owns editing. */
+.cardRatingBadge { position: absolute; z-index: 3; right: 9px; top: 9px; display: inline-flex; align-items: center; justify-content: center; min-width: 48px; min-height: 30px; padding: 5px 8px; border: 1px solid rgba(214,173,99,.65); border-radius: 7px; background: rgba(14,13,16,.88); color: #e7c67e; font-size: 12px; font-weight: 650; line-height: 1; pointer-events: none; }
+.cardRatingBadge.viewed { min-width: 30px; padding: 5px; color: #bee3c2; border-color: rgba(121,180,131,.65); background: rgba(16,42,23,.88); }
+.listRatingLabel { color: #e7c67e; font-size: 12px; font-weight: 650; }
+.listRatingLabel.viewed { color: #b6d6b9; font-weight: 500; }
+.movieCardList .cardBottom { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.movieCardList .cardDetailsButton { font-size: 12px; min-height: 35px; }
+@media (max-width: 680px) {
+  .movieCardList { grid-template-columns: 94px minmax(0, 1fr); gap: 12px; }
+  .movieCardList .posterFrame { grid-column: 1; }
+  .movieCardList .movieMeta { grid-column: 2; }
+  .movieCardList .cardBottom { align-items: flex-start; margin-top: 6px; }
+  .cardRatingBadge { top: 8px; right: 8px; min-height: 32px; font-size: 13px; }
+}
+@media (max-width: 380px) {
+  .movieCardList { grid-template-columns: 82px minmax(0,1fr); gap: 10px; }
+}
