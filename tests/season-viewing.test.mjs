@@ -14,7 +14,7 @@ test("movie watch accepts a rating per occurrence and preserves history",()=>{
  assert.match(worker,/const rating = validateViewingRating\(body.rating\)/);
  assert.match(worker,/INSERT OR IGNORE INTO watch_history\(movie_id, watched_at, rating\)/);
  assert.match(worker,/async function reviseWatchRating/);
- assert.match(page,/updateWatchRating\(event.id,rating\)/);
+ assert.match(page,/updateWatchRating\(event.id,change.target.value/);
 });
 test("series record supports season and period with rating",()=>{
  assert.match(worker,/season_number AS seasonNumber/);
