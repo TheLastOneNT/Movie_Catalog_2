@@ -523,6 +523,17 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
   const createCycle=()=>execute(`/api/movies/${movie.id}/cycles`,{},reset);
   const closeCycle=(cycleId,outcome)=>execute(`/api/movies/${movie.id}/cycles/${cycleId}/close`,
     {outcome},()=>{setPendingClose(null);reset();});
+  const cancelEmptyCycle=async(cycleId)=>{
+    setSaving(true);setError("");
+    try{
+      const response=await fetch(`/api/movies/${movie.id}/cycles/${cycleId}`,{
+        method:"DELETE",credentials:"same-origin"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Cannot cancel viewing cycle");
+      setCycles(data.cycles||[]);reset();
+    }catch(err){setError(err.message);}
+    finally{setSaving(false);}
+  };
   const submit=(event)=>{
     event.preventDefault();
     if(!startedAt){setError(en?"Choose a start date.":"Выберите дату начала.");return;}
@@ -579,7 +590,8 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
             <div className="seasonEntryTop">
               <div className="seasonEntryInfo"><strong>{en?"Season":"Сезон"} {entry.seasonNumber}</strong>
                 <span className="seasonEntryDates">{prettyDate(entry.startedAt)}
-                  {entry.finishedAt?` — ${prettyDate(entry.finishedAt)}`:(en?" · in progress":" · в процессе")}</span>
+                  {entry.finishedAt?` — ${prettyDate(entry.finishedAt)}`:
+                    cycle.outcome==="watching"?(en?" · in progress":" · в процессе"):(en?" · not finished":" · не закончили")}</span>
               </div>
               {entry.rating!=null&&<span className="seasonRating">★ {entry.rating}/5</span>}
             </div>
@@ -599,13 +611,18 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
             "Завершите цикл, чтобы пересчитать общую оценку. Непросмотренные сезоны не учитываются."}</p>
           {pendingClose===cycle.id?<div className="seriesCycleFinishConfirm">
             <button type="button" onClick={()=>setPendingClose(null)}>{en?"Cancel":"Отмена"}</button>
-            <button type="button" disabled={saving||!cycle.ratedSeasons}
+            <button type="button" disabled={saving||!cycle.ratedSeasons||cycle.seasons.some(item=>!item.finishedAt)}
               onClick={()=>closeCycle(cycle.id,"completed")}>{en?"Finished series":"Досмотрели"}</button>
             <button type="button" disabled={saving||!cycle.ratedSeasons}
               onClick={()=>closeCycle(cycle.id,"stopped")}>{en?"Stopped early":"Прекратили смотреть"}</button>
           </div>:<button type="button" className="seriesCycleEndButton" disabled={saving||!cycle.ratedSeasons}
             onClick={()=>setPendingClose(cycle.id)}>{en?"End viewing cycle":"Завершить цикл просмотра"}</button>}
           {!cycle.ratedSeasons&&<small>{en?"Rate at least one finished season first.":"Сначала завершите и оцените хотя бы один сезон."}</small>}
+          {cycle.seasons.some(item=>!item.finishedAt)&&<small>{en?
+            "Finish unfinished seasons to mark the series completed. You can stop watching at any time.":
+            "Чтобы отметить «Досмотрели», закончите незавершённые сезоны. Для прерванного просмотра выберите «Прекратили смотреть»."}</small>}
+          {cycle.seasons.length===0&&<button type="button" className="seriesCancelEmptyCycle"
+            disabled={saving} onClick={()=>cancelEmptyCycle(cycle.id)}>{en?"Cancel empty cycle":"Отменить пустой цикл"}</button>}
         </div>}
       </section>)}
     </div>
