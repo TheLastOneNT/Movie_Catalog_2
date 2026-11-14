@@ -669,16 +669,20 @@ function validateViewingDay(value) {
   return value;
 }
 async function refreshCurrentRating(env,movieId) {
-  // Current rating is the latest surviving rating action. Deleting a viewing
-  // cannot leave its removed rating as the headline rating.
-  const row = await env.DB.prepare(`SELECT rc.rating FROM rating_changes rc
-    WHERE rc.movie_id=?
-      AND (rc.source_type='manual'
-        OR (rc.source_type='watch' AND EXISTS(
-          SELECT 1 FROM watch_history wh WHERE wh.id=rc.source_id AND wh.movie_id=rc.movie_id))
-        OR (rc.source_type='season' AND EXISTS(
-          SELECT 1 FROM season_viewings sv WHERE sv.id=rc.source_id AND sv.movie_id=rc.movie_id)))
-    ORDER BY rc.id DESC LIMIT 1`).bind(movieId).first();
+  // Latest by viewing DATE, not by insertion or modification time.
+  // Direct/manual rating is a fallback when no dated rating exists.
+  const row = await env.DB.prepare(`
+    SELECT rating FROM (
+      SELECT rating, substr(watched_at,1,10) AS viewed_date, id AS source_id, 2 AS priority
+      FROM watch_history WHERE movie_id=? AND rating IS NOT NULL
+      UNION ALL
+      SELECT rating, finished_at AS viewed_date, id AS source_id, 2 AS priority
+      FROM season_viewings WHERE movie_id=? AND finished_at IS NOT NULL AND rating IS NOT NULL
+      UNION ALL
+      SELECT rating, '0000-00-00' AS viewed_date, id AS source_id, 1 AS priority
+      FROM rating_changes WHERE movie_id=? AND source_type='manual'
+    ) ORDER BY viewed_date DESC, priority DESC, source_id DESC LIMIT 1
+  `).bind(movieId,movieId,movieId).first();
   const rating = row?.rating ?? null;
   await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at)
     VALUES (?,'unwatched',?,?)
@@ -700,7 +704,7 @@ async function registerRating(env,movieId,rating,sourceType,sourceId=null) {
 async function listSeasonViewings(env,movieId) {
   const entries = await env.DB.prepare(`SELECT id, season_number AS seasonNumber, started_at AS startedAt,
     finished_at AS finishedAt, rating, created_at AS createdAt
-    FROM season_viewings WHERE movie_id = ? ORDER BY season_number, started_at DESC, id DESC`)
+    FROM season_viewings WHERE movie_id = ? ORDER BY COALESCE(finished_at,started_at) DESC, started_at DESC, id DESC`)
     .bind(movieId).all();
   return entries.results;
 }

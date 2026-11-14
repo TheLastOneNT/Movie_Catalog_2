@@ -412,7 +412,7 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     <p>{en ? "Log the period you watched each season. Rewatches are separate entries." : "Укажи период просмотра сезона. При пересмотре добавь новую запись."}</p>
     {loading ? <p>…</p> : entries.length > 0 && <ul className="seasonEntries">
       {entries.map((entry) => <li key={entry.id}>
-        <div><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
+        <div className="seasonEntryInfo"><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
           <span>{entry.startedAt}{entry.finishedAt ? ` — ${entry.finishedAt}` : (en ? " — watching now" : " — смотрим сейчас")}</span>
           {entry.rating != null && <span className="seasonRating">★ {entry.rating}/5</span>}
         </div>
@@ -434,12 +434,14 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     </div>}
     <form className="seasonForm" onSubmit={submit}>
       <label>{en ? "Season #" : "Номер сезона"}
-        <input type="number" min="1" max="200" required value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}/>
+        <select required value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}>
+          {Array.from({length:30},(_,index)=>index+1).map(number=><option key={number} value={number}>{en ? `Season ${number}` : `Сезон ${number}`}</option>)}
+        </select>
       </label>
       <label>{en ? "Started" : "Начали"}
         <input type="date" required value={startedAt} onChange={event=>setStartedAt(event.target.value)}/>
       </label>
-      <label>{en ? "Finished (optional)" : "Закончили (необязательно)"}
+      <label>{en ? "Finished" : "Закончили"}
         <input type="date" min={startedAt} value={finishedAt} onChange={event=>{setFinishedAt(event.target.value);if(!event.target.value)setRating(null);}}/>
       </label>
       {finishedAt && <div className="seasonFormRating"><span>{en ? "Rating for this viewing" : "Оценка этого просмотра"}</span>
@@ -1327,8 +1329,11 @@ export default function Home() {
                     {historyOpen && <div className="historyPanel">
                       {historyLoading ? <p>…</p> : historyEvents.length ? <ul>
                         {historyEvents.map((event)=><li key={event.id} className="watchEvent">
-                          <div><strong>{new Intl.DateTimeFormat(t.locale,{day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
-                            <div className="watchEventRating"><Stars value={event.rating || 0} compact onChange={(rating)=>updateWatchRating(event.id,rating)} label={t.modal.rating}/></div>
+<div className="watchEventLine"><strong>{new Intl.DateTimeFormat(t.locale,{day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
+                            <select className="watchEventRatingSelect" aria-label={language === "en" ? "Viewing rating" : "Оценка просмотра"} value={event.rating ?? ""} onChange={(change)=>updateWatchRating(event.id,change.target.value ? Number(change.target.value) : null)}>
+                              <option value="">☆ —</option>
+                              {[1,2,3,4,5].map(value=><option key={value} value={value}>★ {value}/5</option>)}
+                            </select>
                           </div>
                           <button type="button" onClick={()=>setConfirmDelete({kind:"watch",id:event.id})}>{t.family.removeWatch}</button>
                         </li>)}
@@ -1354,11 +1359,12 @@ export default function Home() {
                     <span>{t.modal.history}</span>
                     {historyLoading ? <p>{t.modal.historyLoading}</p> : historyEvents.length ? <ul>
                       {historyEvents.map((event) => <li key={event.id} className="watchEvent">
-                        <div><strong>{new Intl.DateTimeFormat(t.locale, {day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
-                          <div className="watchEventRating"><span>{language === "en" ? "Rating" : "Оценка"}:</span>
-                            <Stars value={event.rating || 0} onChange={(rating)=>updateWatchRating(event.id,rating)} compact label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
+<div className="watchEventLine"><strong>{new Intl.DateTimeFormat(t.locale, {day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
+                            <select className="watchEventRatingSelect" aria-label={language === "en" ? "Viewing rating" : "Оценка просмотра"} value={event.rating ?? ""} onChange={(change)=>updateWatchRating(event.id,change.target.value ? Number(change.target.value) : null)}>
+                              <option value="">☆ —</option>
+                              {[1,2,3,4,5].map(value=><option key={value} value={value}>★ {value}/5</option>)}
+                            </select>
                           </div>
-                        </div>
                         <button type="button" onClick={() => setConfirmDelete({kind:"watch",id:event.id})} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
                       </li>)}
                     </ul> : <p>{t.modal.historyEmpty}</p>}

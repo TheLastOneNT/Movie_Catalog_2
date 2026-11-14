@@ -599,3 +599,22 @@ img { display: block; max-width: 100%; }
 .seasonDeletePrompt { margin:12px 0; padding:12px; border:1px solid #9c6056; background:#241b1e; display:grid; gap:12px; color:#eee0d7; }
 
 .legacySeriesHistory { width:100%; padding:12px 14px; background:transparent; border:1px solid #554631; color:#d7b36b; text-align:left; cursor:pointer; margin:12px 0; }
+
+/* Chronological viewing history: date and editable compact rating in one row. */
+.historyPanel .watchEvent { display:flex; align-items:center; gap:8px; min-width:0; }
+.historyPanel .watchEventLine { display:flex; flex:1 1 auto; min-width:0; align-items:center; justify-content:space-between; gap:8px; }
+.historyPanel .watchEventLine strong { white-space:nowrap; font-size:13px; font-weight:500; }
+.historyPanel .watchEventRatingSelect { flex:0 0 76px; width:76px; min-width:0; max-width:76px; height:36px; padding:4px; border:1px solid rgba(214,173,99,.35); border-radius:6px; color:#e6bd74; background:#231f23; font-size:13px; text-align:center; }
+.historyPanel .watchEvent > button { flex:0 0 auto; }
+.seasonForm { grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; min-width:0; width:100%; box-sizing:border-box; }
+.seasonForm label { min-width:0; width:100%; box-sizing:border-box; }
+.seasonForm :is(select,input) { display:block; width:100%; min-width:0; max-width:100%; height:46px; min-height:46px; box-sizing:border-box; margin:0; padding:0 9px; border-radius:6px; background:#151318; border:1px solid #514843; color:#f5efe8; font-size:16px; font-family:inherit; -webkit-appearance:auto; appearance:auto; }
+.seasonForm input[type="date"] { min-width:0; -webkit-min-logical-width:0; }
+.seasonEntries li .seasonEntryInfo { display:flex; flex-direction:column; gap:4px; min-width:0; }
+@media(max-width:680px) {
+  .seasonForm { grid-template-columns:minmax(0,1fr); }
+  .seasonTracker, .seasonForm, .seasonForm label, .seasonForm :is(input,select) { min-width:0 !important; max-width:100% !important; box-sizing:border-box; }
+  .seasonForm :is(input,select) { width:100% !important; }
+  .historyPanel .watchEventLine strong { font-size:11px; }
+  .historyPanel .watchEventRatingSelect { flex-basis:65px; width:65px; max-width:65px; font-size:12px; }
+}
