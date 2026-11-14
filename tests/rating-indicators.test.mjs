@@ -18,7 +18,7 @@ test("favorite features are hidden without data deletion",()=>{
  assert.doesNotMatch(page,/<option value="favorites">/);
  assert.doesNotMatch(page, /"modalFavorite active"/);
  assert.doesNotMatch(page,/favoriteCount/);
- assert.match(page,/fiveStarCount/);
+ assert.doesNotMatch(page,/fiveStarCount/);
 });
 test("rating editing remains in film detail",()=>{
  assert.match(page,/<Stars value=\{selected\.progress\.rating \|\| 0\}/);

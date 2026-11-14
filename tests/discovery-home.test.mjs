@@ -24,6 +24,6 @@ test("sort controls offer default, best rated and long unseen",()=>{
 });
 test("info panel includes film counts and has mobile layout",()=>{
  assert.match(page,/\{watchlistCount\}/);
- assert.match(page,/\{fiveStarCount\}/);
+ assert.doesNotMatch(page,/fiveStarCount/);
  assert.match(css,/\.collectionInfoStats/);
 });
