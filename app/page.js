@@ -186,8 +186,7 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, me
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
         <div className="cardBottom">
           <Stars value={movie.progress.rating || 0} onChange={(rating) => onRate(movie.id, rating)} compact label={labels.modal.rating} />
-          <button type="button" className="mobileRating" onClick={() => onOpen(movie.id)}>{movie.progress.rating ? `★ ${movie.progress.rating}/5` : labels.family.rate}</button>
-          <span className="moreLink">{labels.catalog.details} <Icon name="chevron" size={14} /></span>
+          {view === "list" && <button type="button" className="moreLink cardDetailsButton" onClick={() => onOpen(movie.id)} aria-label={labels.catalog.details + ": " + title}>{labels.catalog.details} <Icon name="chevron" size={14} /></button>}
         </div>
       </div>
     </article>
