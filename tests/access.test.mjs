@@ -22,14 +22,14 @@ function createEnvironment() {
   };
 }
 
-test("allows public catalog reads without a session", async () => {
+test("keeps family catalog private without a session", async () => {
   const response = await worker.fetch(
     new Request("https://movies.example.test/api/catalog"),
     createEnvironment(),
   );
 
-  assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).movies, []);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Authentication required." });
 });
 
 test("requires a session for catalog changes", async () => {
@@ -53,4 +53,17 @@ test("keeps backup exports private", async () => {
   );
 
   assert.equal(response.status, 401);
+});
+
+test("allows authenticated family catalog reads", async () => {
+  const { createHash } = await import("node:crypto");
+  const token = createHash("sha256").update("movie-catalog-session:test-family-key").digest("hex");
+  const response = await worker.fetch(
+    new Request("https://movies.example.test/api/catalog", {
+      headers: { cookie: `movie_catalog_session=${token}` },
+    }),
+    createEnvironment(),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).movies, []);
 });

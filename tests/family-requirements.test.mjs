@@ -1,0 +1,20 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+const page = await readFile(new URL("../app/page.js", import.meta.url), "utf8");
+const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+
+test("one family rating is used on cards and in details", () => {
+  assert.match(page, /onRate=\{updateSharedRating\}/);
+  assert.match(page, /selected\.progress\.rating \|\| 0/);
+  assert.doesNotMatch(page, /updateMember\(selected\.id, \{ rating \}/);
+});
+test("rating update does not change viewing history or statuses", () => {
+  assert.match(worker, /async function updateSharedRating/);
+  assert.match(worker, /DO UPDATE SET rating = excluded\.rating, updated_at = excluded\.updated_at/);
+  assert.match(worker, /ratingMatch && request\.method === "PATCH"/);
+});
+test("TMDB searches for artwork in the original language", () => {
+  assert.match(worker, /original_language/);
+  assert.match(worker, /poster\.iso_639_1 === originalLanguage/);
+});
