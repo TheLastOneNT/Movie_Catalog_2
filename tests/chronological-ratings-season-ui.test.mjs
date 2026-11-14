@@ -31,14 +31,14 @@ test("watch history shows date and compact editable rating in same row",()=>{
   assert.doesNotMatch(page,/className="watchEventRating"><Stars/);
   assert.match(css,/\.historyPanel \.watchEventLine \{ display:flex;/);
 });
-test("consistent iPhone date picker avoids native intrinsic-width overflow",()=>{
-  assert.match(page,/function CompactDateField/);
-  assert.match(page,/className="seasonDateControl"/);
-  assert.match(page,/className=\{value \? "seasonDateValue"/);
-  assert.match(css,/\.seasonDateControl input\[type="date"\] \{ position:absolute;/);
-  assert.match(css,/\.seasonForm \{ display:flex; flex-direction:column; align-items:stretch;/);
-  assert.match(page,/en \? "Finished" : "Закончили"/);
+test("one custom calendar picks a season date range without native date width overflow",()=>{
+  assert.match(page,/function SeasonRangeCalendar/);
+  assert.match(page,/className="seasonRangeTrigger"/);
+  assert.match(page,/className="seasonCalendarGrid"/);
+  assert.match(css,/\.seasonCalendarGrid \{ display:grid; grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(page,/CompactDateField/);
 });
+
 test("season selector and compact history use one row",()=>{
   assert.match(page,/Array.from\(\{length:30\}/);
   assert.equal((page.match(/className="watchEventRatingSelect"/g)||[]).length,2);

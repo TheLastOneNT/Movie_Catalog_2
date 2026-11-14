@@ -353,23 +353,67 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 }
 
 
-// The native iOS date input has an intrinsic min-width larger than its grid cell.
-// Keep native picking and keyboard accessibility, but render our own date text.
-function CompactDateField({ label, value, onChange, min, max, language, required = false }) {
-  const display = value
-    ? new Intl.DateTimeFormat(language === "en" ? "en-US" : "ru-RU", {
-        year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
-      }).format(new Date(`${value}T12:00:00Z`))
-    : (language === "en" ? "Select date" : "Выбрать дату");
-  return <label className="seasonDateField">
-    <span className="seasonFieldCaption">{label}</span>
-    <span className="seasonDateControl">
-      <span className={value ? "seasonDateValue" : "seasonDateValue empty"}>{display}</span>
-      <Icon name="calendar" size={18} />
-      <input type="date" aria-label={label} value={value} min={min} max={max} required={required}
-        onChange={(event)=>onChange(event.target.value)} />
-    </span>
-  </label>;
+// Purpose-built calendar: two taps choose a season's start and end. A single
+// selected start is a valid, unfinished viewing period.
+function SeasonRangeCalendar({start, end, onChange, language}) {
+  const en=language==="en";
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(()=> (start||todayLocal()).slice(0,7));
+  const [choosingEnd,setChoosingEnd]=useState(Boolean(start&&!end));
+  const locale=en?"en-US":"ru-RU";
+  const asDate=(value)=>new Date(`${value}T12:00:00Z`);
+  const pretty=(value)=>value?new Intl.DateTimeFormat(locale,{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(asDate(value)):"—";
+  const year=Number(month.slice(0,4)),index=Number(month.slice(5,7))-1;
+  const startWeek=(new Date(Date.UTC(year,index,1)).getUTCDay()+6)%7;
+  const daysInMonth=new Date(Date.UTC(year,index+1,0)).getUTCDate();
+  const allDays=Array.from({length:Math.ceil((startWeek+daysInMonth)/7)*7},(_,i)=>{
+    const day=i-startWeek+1;
+    return day>=1&&day<=daysInMonth?day:null;
+  });
+  const iso=(day)=>`${year}-${String(index+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  const changeMonth=(offset)=>{
+    const date=new Date(Date.UTC(year,index+offset,1));
+    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
+  };
+  const choose=(day)=>{
+    const date=iso(day);
+    if(!choosingEnd||!start||date<start){
+      onChange(date,"");setChoosingEnd(true);
+    }else{
+      onChange(start,date);setChoosingEnd(false);setOpen(false);
+    }
+  };
+  const toggle=()=>{
+    if(!open){setMonth((start||todayLocal()).slice(0,7));setChoosingEnd(Boolean(start&&!end));}
+    setOpen(value=>!value);
+  };
+  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const monthTitle=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(year,index,1)));
+  return <div className="seasonRangeField">
+    <span className="seasonFieldCaption">{en?"Viewing period":"Период просмотра"}</span>
+    <button type="button" className="seasonRangeTrigger" onClick={toggle} aria-expanded={open} aria-label={en?"Choose viewing period":"Выбрать период просмотра"}>
+      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty(start)} <span className="seasonRangeSeparator">→</span> {end?pretty(end):(en?"Watching":"Смотрим")}</span>
+    </button>
+    {open&&<div className="seasonCalendar" role="group" aria-label={en?"Viewing dates":"Даты просмотра"}>
+      <div className="seasonCalendarHead">
+        <button type="button" onClick={()=>changeMonth(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
+        <strong>{monthTitle}</strong>
+        <button type="button" onClick={()=>changeMonth(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
+      </div>
+      <p className="seasonCalendarHint">{choosingEnd&&start?(en?"Choose the end date, or leave the season in progress":"Выберите дату завершения или оставьте сезон незавершённым"):(en?"Choose the start date":"Выберите дату начала")}</p>
+      <div className="seasonCalendarGrid">
+        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
+        {allDays.map((day,position)=>day?<button key={position} type="button"
+          className={["seasonCalendarDay",iso(day)===start?"start":"",iso(day)===end?"end":"",start&&end&&iso(day)>start&&iso(day)<end?"inside":""].filter(Boolean).join(" ")}
+          aria-pressed={iso(day)===start||iso(day)===end} onClick={()=>choose(day)}>{day}</button>:<span key={position}/>)}
+      </div>
+      <div className="seasonCalendarActions">
+        <button type="button" onClick={()=>{onChange(start||todayLocal(),"");setChoosingEnd(true);setOpen(false);}}>{en?"Still watching":"Ещё смотрим"}</button>
+        <button type="button" onClick={()=>{onChange(todayLocal(),"");setMonth(todayLocal().slice(0,7));setChoosingEnd(true);}}>{en?"Start today":"Начать сегодня"}</button>
+        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
+      </div>
+    </div>}
+  </div>;
 }
 
 function SeasonTracker({ movie, language, onMovieChanged }) {
@@ -459,9 +503,8 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
           {Array.from({length:30},(_,index)=>index+1).map(number=><option key={number} value={number}>{en ? `Season ${number}` : `Сезон ${number}`}</option>)}
         </select>
       </label>
-      <CompactDateField label={en ? "Started" : "Начали"} language={language} value={startedAt} required onChange={setStartedAt} />
-      <CompactDateField label={en ? "Finished" : "Закончили"} language={language} value={finishedAt} min={startedAt}
-        onChange={(value)=>{setFinishedAt(value);if(!value)setRating(null);}} />
+      <SeasonRangeCalendar language={language} start={startedAt} end={finishedAt}
+        onChange={(start,end)=>{setStartedAt(start);setFinishedAt(end);if(!end)setRating(null);}} />
       {finishedAt && <div className="seasonFormRating"><span>{en ? "Rating for this viewing" : "Оценка этого просмотра"}</span>
         <Stars value={rating || 0} onChange={setRating} label={en ? "Season rating" : "Оценка сезона"} />
       </div>}
@@ -1336,7 +1379,7 @@ export default function Home() {
                 ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")
                 : (language === "en" ? "Current rating" : "Актуальная оценка")}</span>
                 {selected.category === "series" && selected.progress.rating != null
-                  ? <span className="seriesAverageRating">★ {Number(selected.progress.rating).toLocaleString(language === "en" ? "en-US" : "ru-RU", {maximumFractionDigits:2})}/5</span>
+                  ? <span className="seriesAverageRating">★ {Number(selected.progress.rating).toLocaleString(language === "en" ? "en-US" : "ru-RU", {maximumFractionDigits:1})}/5</span>
                   : <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id,rating)} label={t.modal.rating} />}
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>

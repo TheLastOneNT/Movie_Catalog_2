@@ -82,7 +82,7 @@ function assertSameOrigin(request, url) {
 const EFFECTIVE_RATING_SQL = `(
   CASE WHEN m.category='series' THEN
     COALESCE((
-      SELECT ROUND(AVG(latest.rating),2)
+      SELECT ROUND(AVG(latest.rating),1)
       FROM (
         SELECT sv.movie_id, sv.rating, ROW_NUMBER() OVER (
           PARTITION BY sv.movie_id, sv.season_number
