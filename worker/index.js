@@ -80,13 +80,24 @@ function assertSameOrigin(request, url) {
 // distinct season. Ratings are not weighted by how often a season was rewatched.
 // Movies keep their existing latest-calendar-date semantics.
 // Ratings are derived exclusively from dated viewing records.
+// A series' published rating is computed from its most recently completed
+// viewing cycle. An active rewatch cannot silently overwrite the last result.
+// Inside each cycle, the latest RATED viewing of each season contributes once.
 const EFFECTIVE_RATING_SQL = `(
   CASE WHEN m.category='series' THEN (
     SELECT ROUND(AVG(latest.rating),1) FROM (
-      SELECT sv.movie_id,sv.rating,ROW_NUMBER() OVER (PARTITION BY sv.movie_id,sv.season_number
-        ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC) AS recent
-      FROM season_viewings sv WHERE sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
-    ) latest WHERE latest.movie_id=m.id AND latest.recent=1
+      SELECT sv.cycle_id, sv.rating, ROW_NUMBER() OVER (
+        PARTITION BY sv.cycle_id,sv.season_number
+        ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC
+      ) AS ranking FROM season_viewings sv
+      WHERE sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
+    ) latest WHERE latest.cycle_id = (
+      SELECT sc.id FROM series_cycles sc
+      WHERE sc.movie_id=m.id AND sc.outcome IN ('completed','stopped')
+        AND EXISTS (SELECT 1 FROM season_viewings sv
+          WHERE sv.cycle_id=sc.id AND sv.rating IS NOT NULL AND sv.finished_at IS NOT NULL)
+      ORDER BY sc.ended_at DESC,sc.id DESC LIMIT 1
+    ) AND latest.ranking=1
   ) ELSE (
     SELECT wh.rating FROM watch_history wh WHERE wh.movie_id=m.id
     ORDER BY substr(wh.watched_at,1,10) DESC,wh.id DESC LIMIT 1
@@ -591,10 +602,14 @@ async function exportData(env) {
   const posterRows = await env.DB.prepare("SELECT movie_id, content_type, image FROM movie_posters").all();
   const ratingRows = await env.DB.prepare("SELECT id, movie_id AS movieId, source_type AS sourceType, source_id AS sourceId, rating, created_at AS createdAt FROM rating_changes ORDER BY id").all();
   const seasonEntries = await env.DB.prepare(
-    "SELECT id, movie_id AS movieId, season_number AS seasonNumber, started_at AS startedAt, finished_at AS finishedAt, rating, created_at AS createdAt FROM season_viewings ORDER BY created_at"
+    "SELECT id, movie_id AS movieId, cycle_id AS cycleId, season_number AS seasonNumber, started_at AS startedAt, finished_at AS finishedAt, rating, created_at AS createdAt FROM season_viewings ORDER BY created_at"
+  ).all();
+  const cycleEntries = await env.DB.prepare(
+    "SELECT id, movie_id AS movieId, started_at AS startedAt, ended_at AS endedAt, outcome, created_at AS createdAt FROM series_cycles ORDER BY id"
   ).all();
   return json({
-    schemaVersion: 4,
+    schemaVersion: 5,
+    seriesCycles: cycleEntries.results,
     seasonViewings: seasonEntries.results,
     ratingChanges: ratingRows.results,
     exportedAt: new Date().toISOString(),
@@ -717,49 +732,123 @@ async function registerRating(env,movieId,rating,sourceType,sourceId=null) {
 }
 
 async function listSeasonViewings(env,movieId) {
-  const entries = await env.DB.prepare(`SELECT id, season_number AS seasonNumber, started_at AS startedAt,
-    finished_at AS finishedAt, rating, created_at AS createdAt
-    FROM season_viewings WHERE movie_id = ? ORDER BY COALESCE(finished_at,started_at) DESC, started_at DESC, id DESC`)
+  const entries = await env.DB.prepare(`SELECT id, cycle_id AS cycleId, season_number AS seasonNumber,
+    started_at AS startedAt, finished_at AS finishedAt, rating, created_at AS createdAt
+    FROM season_viewings WHERE movie_id=? ORDER BY COALESCE(finished_at,started_at) DESC,started_at DESC,id DESC`)
     .bind(movieId).all();
   return entries.results;
 }
+function roundOne(value) { return Math.round((value+Number.EPSILON)*10)/10; }
+async function listSeriesCycles(env,movieId) {
+  const cycles = (await env.DB.prepare(`SELECT id, started_at AS startedAt, ended_at AS endedAt,
+    outcome, created_at AS createdAt FROM series_cycles WHERE movie_id=?
+    ORDER BY started_at DESC,id DESC`).bind(movieId).all()).results;
+  const entries=await listSeasonViewings(env,movieId);
+  return cycles.map(cycle=>{
+    const seasons=entries.filter(entry=>entry.cycleId===cycle.id);
+    const mostRecent=new Map();
+    for(const season of seasons) {
+      if(season.rating==null||!season.finishedAt)continue;
+      const old=mostRecent.get(season.seasonNumber);
+      if(!old || season.finishedAt>old.finishedAt ||
+        (season.finishedAt===old.finishedAt&&season.id>old.id))mostRecent.set(season.seasonNumber,season);
+    }
+    const scores=[...mostRecent.values()].map(value=>value.rating);
+    return {...cycle,seasons,average:scores.length?roundOne(scores.reduce((a,b)=>a+b,0)/scores.length):null,
+      ratedSeasons:scores.length};
+  });
+}
+async function createSeriesCycle(env,movieId) {
+  const movie=await env.DB.prepare("SELECT id FROM movies WHERE id=? AND category='series'").bind(movieId).first();
+  if(!movie)return json({error:"Series not found."},404);
+  const open=await env.DB.prepare("SELECT id FROM series_cycles WHERE movie_id=? AND outcome='watching'").bind(movieId).first();
+  if(open)return json({error:"Finish the current viewing cycle first."},409);
+  const today=new Date().toISOString().slice(0,10);
+  await env.DB.prepare(`INSERT INTO series_cycles(movie_id,started_at,outcome)
+    VALUES (?,?,'watching')`).bind(movieId,today).run();
+  return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)},201);
+}
+async function closeSeriesCycle(request,env,movieId,cycleId) {
+  const input=await readJson(request);
+  if(!["completed","stopped"].includes(input.outcome))throw new ValidationError("Invalid cycle outcome.");
+  const cycle=await env.DB.prepare(`SELECT id FROM series_cycles
+    WHERE id=? AND movie_id=? AND outcome='watching'`).bind(cycleId,movieId).first();
+  if(!cycle)return json({error:"Active viewing cycle not found."},404);
+  const existing=await env.DB.prepare(`SELECT COUNT(*) AS rated,
+    MAX(COALESCE(finished_at,started_at)) AS latest FROM season_viewings
+    WHERE cycle_id=? AND movie_id=? AND rating IS NOT NULL AND finished_at IS NOT NULL`)
+    .bind(cycleId,movieId).first();
+  if(!Number(existing?.rated))return json({error:"Rate at least one finished season before closing this cycle."},422);
+  // The cycle's calendar date is based on its actual last completed season, not
+  // on when the user pressed "Done", so backdated cycles sort correctly.
+  await env.DB.prepare(`UPDATE series_cycles SET outcome=?,ended_at=? WHERE id=? AND movie_id=?`)
+    .bind(input.outcome,existing.latest,cycleId,movieId).run();
+  await refreshCurrentRating(env,movieId);
+  await refreshViewingSummary(env,movieId);
+  return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)});
+}
 async function saveSeasonViewing(request,env,movieId) {
-  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id=? AND category='series'").bind(movieId).first();
-  if (!movie) return json({error:"Series not found."},404);
-  const data = await readJson(request);
-  const season = data.seasonNumber;
-  if (!Number.isInteger(season) || season < 1 || season > 200) throw new ValidationError("Season must be 1–200.");
-  const start = validateViewingDay(data.startedAt);
-  const finish = data.finishedAt ? validateViewingDay(data.finishedAt) : null;
-  if (finish && finish < start) throw new ValidationError("Finish date must not precede start.");
-  const rating = validateViewingRating(data.rating);
-  if (!finish && rating !== null) throw new ValidationError("Finish the season before rating it.");
+  const movie=await env.DB.prepare("SELECT id FROM movies WHERE id=? AND category='series'").bind(movieId).first();
+  if(!movie)return json({error:"Series not found."},404);
+  const data=await readJson(request);
+  const season=data.seasonNumber;
+  if(!Number.isInteger(season)||season<1||season>200)throw new ValidationError("Season must be 1–200.");
+  const start=validateViewingDay(data.startedAt);
+  const finish=data.finishedAt?validateViewingDay(data.finishedAt):null;
+  if(finish&&finish<start)throw new ValidationError("Finish date must not precede start.");
+  const rating=validateViewingRating(data.rating);
+  if(finish&&rating===null)throw new ValidationError("A finished season requires a rating.");
+  if(!finish&&rating!==null)throw new ValidationError("Finish the season before rating it.");
+  let cycleId=Number(data.cycleId);
   let entryId;
-  if (data.id != null) {
-    const old = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(data.id,movieId).first();
-    if (!old) return json({error:"Season viewing not found."},404);
-    await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
-      WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,data.id,movieId).run();
+  if(data.id!=null) {
+    const previous=await env.DB.prepare("SELECT id,cycle_id AS cycleId FROM season_viewings WHERE id=? AND movie_id=?")
+      .bind(data.id,movieId).first();
+    if(!previous)return json({error:"Season viewing not found."},404);
+    cycleId=previous.cycleId;
     entryId=data.id;
-  } else {
-    const result=await env.DB.prepare(`INSERT INTO season_viewings(movie_id,season_number,started_at,finished_at,rating)
-      VALUES (?,?,?,?,?)`).bind(movieId,season,start,finish,rating).run();
+  }
+  const cycle=await env.DB.prepare("SELECT id,outcome FROM series_cycles WHERE id=? AND movie_id=?")
+    .bind(cycleId,movieId).first();
+  if(!cycle)return json({error:"Viewing cycle not found."},404);
+  if(!entryId&&cycle.outcome!=="watching")return json({error:"Start a new cycle to add viewings."},409);
+  if(entryId){
+    await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
+      WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,entryId,movieId).run();
+  }else{
+    const result=await env.DB.prepare(`INSERT INTO season_viewings(movie_id,cycle_id,season_number,started_at,finished_at,rating)
+      VALUES (?,?,?,?,?,?)`).bind(movieId,cycleId,season,start,finish,rating).run();
     entryId=result.meta.last_row_id;
   }
   await registerRating(env,movieId,rating,"season",entryId);
+  // Editing a completed cycle recomputes its date from its actual entries.
+  if(cycle.outcome!=="watching"){
+    const last=await env.DB.prepare(`SELECT MAX(finished_at) AS day
+      FROM season_viewings WHERE cycle_id=? AND finished_at IS NOT NULL AND rating IS NOT NULL`)
+      .bind(cycleId).first();
+    await env.DB.prepare("UPDATE series_cycles SET ended_at=? WHERE id=?")
+      .bind(last?.day??start,cycleId).run();
+    await refreshCurrentRating(env,movieId);
+  }
   await refreshViewingSummary(env,movieId);
-  return json({ seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId) });
+  return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
 async function removeSeasonViewing(env,movieId,entryId) {
-  const existing = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
-  if (!existing) return json({error:"Season viewing not found."},404);
+  const old=await env.DB.prepare("SELECT id,cycle_id AS cycleId FROM season_viewings WHERE id=? AND movie_id=?")
+    .bind(entryId,movieId).first();
+  if(!old)return json({error:"Season viewing not found."},404);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM rating_changes WHERE movie_id=? AND source_type='season' AND source_id=?").bind(movieId,entryId),
-    env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId),
+    env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId)
   ]);
+  const latest=await env.DB.prepare(`SELECT MAX(finished_at) AS day FROM season_viewings
+    WHERE cycle_id=? AND rating IS NOT NULL AND finished_at IS NOT NULL`).bind(old.cycleId).first();
+  const cycle=await env.DB.prepare("SELECT outcome,started_at AS startedAt FROM series_cycles WHERE id=?").bind(old.cycleId).first();
+  if(cycle&&cycle.outcome!=="watching")await env.DB.prepare("UPDATE series_cycles SET ended_at=? WHERE id=?")
+    .bind(latest?.day??cycle.startedAt,old.cycleId).run();
   await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env,movieId);
-  return json({seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId)});
+  return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
 async function reviseWatchRating(request,env,movieId,entryId) {
   const data = await readJson(request);
@@ -891,7 +980,7 @@ async function readBackup(request) {
 async function restoreBackup(env, snapshot) {
   // One atomic D1 transaction. No existing rows are deleted until full validation passes.
   const statements = [
-    "DELETE FROM rating_changes", "DELETE FROM season_viewings", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
+    "DELETE FROM rating_changes", "DELETE FROM season_viewings", "DELETE FROM series_cycles", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
     "DELETE FROM movie_progress", "DELETE FROM movie_posters", "DELETE FROM movies",
   ].map((sql) => env.DB.prepare(sql));
   for (const person of snapshot.profiles) {
@@ -925,10 +1014,27 @@ async function restoreBackup(env, snapshot) {
       "INSERT INTO watch_history(id, movie_id, watched_at, rating, created_at) VALUES (?, ?, ?, ?, ?)",
     ).bind(event.id, event.movieId, event.watchedAt, event.rating ?? null, event.createdAt || new Date().toISOString()));
   }
+  const legacyCycleIds=new Map();
+  if(snapshot.schemaVersion<5){
+    for(const movie of snapshot.movies.filter(item=>item.category==="series")){
+      const recorded=(snapshot.seasonViewings||[]).filter(entry=>entry.movieId===movie.id);
+      if(!recorded.length)continue;
+      const start=recorded.map(entry=>entry.startedAt).sort()[0];
+      const end=recorded.map(entry=>entry.finishedAt||entry.startedAt).sort().at(-1);
+      legacyCycleIds.set(movie.id,movie.id);
+      statements.push(env.DB.prepare(`INSERT INTO series_cycles(id,movie_id,started_at,ended_at,outcome)
+        VALUES (?,?,?,?,'completed')`).bind(movie.id,movie.id,start,end));
+    }
+  }
+  for(const cycle of snapshot.seriesCycles||[]){
+    statements.push(env.DB.prepare(`INSERT INTO series_cycles(id,movie_id,started_at,ended_at,outcome,created_at)
+      VALUES (?,?,?,?,?,?)`).bind(cycle.id,cycle.movieId,cycle.startedAt,cycle.endedAt||null,
+      cycle.outcome,cycle.createdAt||new Date().toISOString()));
+  }
   for (const season of snapshot.seasonViewings || []) {
     statements.push(env.DB.prepare(
-      "INSERT INTO season_viewings(id, movie_id, season_number, started_at, finished_at, rating, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(season.id, season.movieId, season.seasonNumber, season.startedAt, season.finishedAt || null, season.rating ?? null,
+      "INSERT INTO season_viewings(id, movie_id, cycle_id, season_number, started_at, finished_at, rating, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(season.id, season.movieId, season.cycleId ?? legacyCycleIds.get(season.movieId) ?? null, season.seasonNumber, season.startedAt, season.finishedAt || null, season.rating ?? null,
       season.createdAt || new Date().toISOString()));
   }
   for (const change of snapshot.ratingChanges || []) {
@@ -1011,8 +1117,14 @@ async function handleApi(request, env) {
   if (watchEventMatch && request.method === "DELETE") return deleteViewingEvent(env, Number(watchEventMatch[1]), Number(watchEventMatch[2]));
 
   const seasonsMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/seasons$/);
-  if (seasonsMatch && request.method === "GET") return json({seasons:await listSeasonViewings(env,Number(seasonsMatch[1]))});
+  if (seasonsMatch && request.method === "GET") return json({cycles:await listSeriesCycles(env,Number(seasonsMatch[1]))});
   if (seasonsMatch && request.method === "POST") return saveSeasonViewing(request,env,Number(seasonsMatch[1]));
+  const cyclesMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/cycles$/);
+  if(cyclesMatch&&request.method==="GET")return json({cycles:await listSeriesCycles(env,Number(cyclesMatch[1]))});
+  if(cyclesMatch&&request.method==="POST")return createSeriesCycle(env,Number(cyclesMatch[1]));
+  const closeCycleMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/cycles\/(\d+)\/close$/);
+  if(closeCycleMatch&&request.method==="POST")
+    return closeSeriesCycle(request,env,Number(closeCycleMatch[1]),Number(closeCycleMatch[2]));
   const seasonEntryMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/seasons\/(\d+)$/);
   if (seasonEntryMatch && request.method === "DELETE")
     return removeSeasonViewing(env,Number(seasonEntryMatch[1]),Number(seasonEntryMatch[2]));
