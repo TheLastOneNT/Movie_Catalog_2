@@ -449,3 +449,43 @@ img { display: block; max-width: 100%; }
   .movieGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .toolbar { grid-template-columns: minmax(220px, 1fr) auto auto auto auto; }
 }
+
+/* iPhone release QA: keep form controls within the movie detail column. */
+.watchRecorder, .watchDate, .modalInfo, .watchDate input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.watchDate input[type="date"] { display: block; width: 100%; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; }
+.movieCard { position: relative; }
+.cardQuickActions { position: absolute; z-index: 4; right: 9px; top: 9px; display: flex; flex-direction: column; gap: 8px; }
+.cardQuickActions .watchedButton, .cardQuickActions .favoriteButton { position: static; width: 30px; height: 30px; }
+.confirmBackdrop { position: fixed; z-index: 210; inset: 0; display: grid; place-items: center; padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); background: rgba(0,0,0,.78); backdrop-filter: blur(8px); }
+.confirmDialog { width: min(380px, 100%); padding: 26px 23px; border: 1px solid rgba(214,173,99,.32); border-radius: 12px; background: #171619; box-shadow: 0 18px 65px rgba(0,0,0,.5); color: #f4f0e8; }
+.confirmDialog h2 { margin: 0 0 10px; font: 28px Georgia, serif; }
+.confirmDialog p { margin: 0 0 24px; color: #b5b0ae; font-size: 14px; line-height: 1.6; }
+.confirmDialogActions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.confirmDialogActions button { min-height: 48px; padding: 10px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.confirmCancel { border: 1px solid #4c494d; background: #242228; color: #f4f0e8; }
+.confirmDanger { border: 1px solid #b96058; background: #993f3b; color: #fff; }
+@media (max-width: 680px) {
+  /* Let every sort/filter label fit rather than clipping a native select. */
+  .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .toolbar > select { grid-column: 1 / -1; width: 100%; min-width: 0; padding-inline: 14px 34px; }
+  .toolbar .viewSwitch { grid-column: 1; }
+  .toolbar .resultCount { grid-column: 2; }
+  .cardQuickActions { top: 6px; right: 6px; gap: 7px; }
+  .cardQuickActions .watchedButton, .cardQuickActions .favoriteButton { width: 36px; height: 36px; }
+  /* List mode: poster gets its own column; actions sit outside it. */
+  .listView { row-gap: 9px; }
+  .movieCardList { grid-template-columns: 94px minmax(0,1fr) 36px; gap: 10px; align-items: center; min-height: 156px; padding: 9px; }
+  .movieCardList .posterFrame { grid-column: 1; grid-row: 1; width: 94px; aspect-ratio: 2 / 3; }
+  .movieCardList .cardQuickActions { grid-column: 3; grid-row: 1; position: static; display: flex; flex-direction: column; gap: 10px; align-self: center; }
+  .movieCardList .movieMeta { grid-column: 2; grid-row: 1; min-width: 0; padding: 0; }
+  .movieCardList .movieMeta h3 { font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+  .movieCardList .cardQuickActions .watchedButton, .movieCardList .cardQuickActions .favoriteButton { position: static; width: 36px; height: 36px; }
+  .movieCardList .cardBottom { flex-wrap: wrap; gap: 6px; }
+  .movieCardList .moreLink { font-size: 11px; }
+  .movieCardList .mobileRating { min-height: 36px; min-width: 0; padding: 6px 9px; font-size: 11px; }
+}
+@media (max-width: 380px) {
+  .movieCardList { grid-template-columns: 82px minmax(0,1fr) 34px; gap: 8px; }
+  .movieCardList .posterFrame { width: 82px; }
+  .movieCardList .cardQuickActions .watchedButton, .movieCardList .cardQuickActions .favoriteButton { width: 34px; height: 34px; }
+}
