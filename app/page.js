@@ -353,6 +353,25 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 }
 
 
+// The native iOS date input has an intrinsic min-width larger than its grid cell.
+// Keep native picking and keyboard accessibility, but render our own date text.
+function CompactDateField({ label, value, onChange, min, max, language, required = false }) {
+  const display = value
+    ? new Intl.DateTimeFormat(language === "en" ? "en-US" : "ru-RU", {
+        year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
+      }).format(new Date(`${value}T12:00:00Z`))
+    : (language === "en" ? "Select date" : "Выбрать дату");
+  return <label className="seasonDateField">
+    <span className="seasonFieldCaption">{label}</span>
+    <span className="seasonDateControl">
+      <span className={value ? "seasonDateValue" : "seasonDateValue empty"}>{display}</span>
+      <Icon name="calendar" size={18} />
+      <input type="date" aria-label={label} value={value} min={min} max={max} required={required}
+        onChange={(event)=>onChange(event.target.value)} />
+    </span>
+  </label>;
+}
+
 function SeasonTracker({ movie, language, onMovieChanged }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -412,8 +431,10 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     <p>{en ? "Log the period you watched each season. Rewatches are separate entries." : "Укажи период просмотра сезона. При пересмотре добавь новую запись."}</p>
     {loading ? <p>…</p> : entries.length > 0 && <ul className="seasonEntries">
       {entries.map((entry) => <li key={entry.id}>
-        <div className="seasonEntryInfo"><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
-          <span>{entry.startedAt}{entry.finishedAt ? ` — ${entry.finishedAt}` : (en ? " — watching now" : " — смотрим сейчас")}</span>
+        <div className="seasonEntryTop">
+          <div className="seasonEntryInfo"><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
+            <span className="seasonEntryDates">{entry.startedAt}{entry.finishedAt ? ` — ${entry.finishedAt}` : (en ? " · watching" : " · смотрим")}</span>
+          </div>
           {entry.rating != null && <span className="seasonRating">★ {entry.rating}/5</span>}
         </div>
         <div className="seasonActions">
@@ -433,17 +454,14 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
       </div>
     </div>}
     <form className="seasonForm" onSubmit={submit}>
-      <label>{en ? "Season #" : "Номер сезона"}
-        <select required value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}>
+      <label className="seasonSelectField"><span className="seasonFieldCaption">{en ? "Season" : "Сезон"}</span>
+        <select required value={seasonNumber} onChange={(event)=>setSeasonNumber(Number(event.target.value))}>
           {Array.from({length:30},(_,index)=>index+1).map(number=><option key={number} value={number}>{en ? `Season ${number}` : `Сезон ${number}`}</option>)}
         </select>
       </label>
-      <label>{en ? "Started" : "Начали"}
-        <input type="date" required value={startedAt} onChange={event=>setStartedAt(event.target.value)}/>
-      </label>
-      <label>{en ? "Finished" : "Закончили"}
-        <input type="date" min={startedAt} value={finishedAt} onChange={event=>{setFinishedAt(event.target.value);if(!event.target.value)setRating(null);}}/>
-      </label>
+      <CompactDateField label={en ? "Started" : "Начали"} language={language} value={startedAt} required onChange={setStartedAt} />
+      <CompactDateField label={en ? "Finished" : "Закончили"} language={language} value={finishedAt} min={startedAt}
+        onChange={(value)=>{setFinishedAt(value);if(!value)setRating(null);}} />
       {finishedAt && <div className="seasonFormRating"><span>{en ? "Rating for this viewing" : "Оценка этого просмотра"}</span>
         <Stars value={rating || 0} onChange={setRating} label={en ? "Season rating" : "Оценка сезона"} />
       </div>}
@@ -1314,8 +1332,12 @@ export default function Home() {
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
 
-              <div className="familyRatings"><span>{language === "en" ? "Current rating" : "Актуальная оценка"}</span>
-                <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id, rating)} label={t.modal.rating} />
+              <div className="familyRatings"><span>{selected.category === "series"
+                ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")
+                : (language === "en" ? "Current rating" : "Актуальная оценка")}</span>
+                {selected.category === "series" && selected.progress.rating != null
+                  ? <span className="seriesAverageRating">★ {Number(selected.progress.rating).toLocaleString(language === "en" ? "en-US" : "ru-RU", {maximumFractionDigits:2})}/5</span>
+                  : <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id,rating)} label={t.modal.rating} />}
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 

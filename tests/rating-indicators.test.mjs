@@ -22,5 +22,5 @@ test("favorite features are hidden without data deletion",()=>{
 });
 test("rating editing remains in film detail",()=>{
  assert.match(page,/<Stars value=\{selected\.progress\.rating \|\| 0\}/);
- assert.match(page,/onChange=\{\(rating\) => updateSharedRating\(selected\.id, rating\)\}/);
+ assert.match(page,/onChange=\{\(rating\) => updateSharedRating\(selected\.id,rating\)\}/);
 });
