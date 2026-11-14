@@ -207,11 +207,7 @@ async function updateSharedRating(request, env, movieId) {
   }
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
-  await env.DB.prepare(`
-    INSERT INTO movie_progress(movie_id, status, rating, updated_at)
-    VALUES (?, 'unwatched', ?, ?)
-    ON CONFLICT(movie_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at
-  `).bind(movieId, input.rating, new Date().toISOString()).run();
+  await registerRating(env,movieId,input.rating,"manual");
   return json({ rating: input.rating });
 }
 
@@ -560,12 +556,14 @@ async function exportData(env) {
     ).all(),
   ]);
   const posterRows = await env.DB.prepare("SELECT movie_id, content_type, image FROM movie_posters").all();
+  const ratingRows = await env.DB.prepare("SELECT id, movie_id AS movieId, source_type AS sourceType, source_id AS sourceId, rating, created_at AS createdAt FROM rating_changes ORDER BY id").all();
   const seasonEntries = await env.DB.prepare(
     "SELECT id, movie_id AS movieId, season_number AS seasonNumber, started_at AS startedAt, finished_at AS finishedAt, rating, created_at AS createdAt FROM season_viewings ORDER BY created_at"
   ).all();
   return json({
     schemaVersion: 4,
     seasonViewings: seasonEntries.results,
+    ratingChanges: ratingRows.results,
     exportedAt: new Date().toISOString(),
     movies: catalog,
     profiles: await listProfiles(env),
@@ -667,12 +665,35 @@ function validateViewingDay(value) {
   }
   return value;
 }
-async function setCurrentRating(env,movieId,rating) {
+async function refreshCurrentRating(env,movieId) {
+  // Current rating is the latest surviving rating action. Deleting a viewing
+  // cannot leave its removed rating as the headline rating.
+  const row = await env.DB.prepare(`SELECT rc.rating FROM rating_changes rc
+    WHERE rc.movie_id=?
+      AND (rc.source_type='manual'
+        OR (rc.source_type='watch' AND EXISTS(
+          SELECT 1 FROM watch_history wh WHERE wh.id=rc.source_id AND wh.movie_id=rc.movie_id))
+        OR (rc.source_type='season' AND EXISTS(
+          SELECT 1 FROM season_viewings sv WHERE sv.id=rc.source_id AND sv.movie_id=rc.movie_id)))
+    ORDER BY rc.id DESC LIMIT 1`).bind(movieId).first();
+  const rating = row?.rating ?? null;
   await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at)
     VALUES (?,'unwatched',?,?)
     ON CONFLICT(movie_id) DO UPDATE SET rating=excluded.rating,updated_at=excluded.updated_at`)
     .bind(movieId,rating,new Date().toISOString()).run();
 }
+async function registerRating(env,movieId,rating,sourceType,sourceId=null) {
+  if (!["watch","season","manual"].includes(sourceType)) throw new ValidationError("Unknown rating source.");
+  await env.DB.prepare(`DELETE FROM rating_changes
+    WHERE movie_id=? AND source_type=? AND source_id IS ?`)
+    .bind(movieId,sourceType,sourceId).run();
+  if (rating !== null) {
+    await env.DB.prepare(`INSERT INTO rating_changes(movie_id,source_type,source_id,rating)
+      VALUES (?,?,?,?)`).bind(movieId,sourceType,sourceId,rating).run();
+  }
+  await refreshCurrentRating(env,movieId);
+}
+
 async function listSeasonViewings(env,movieId) {
   const entries = await env.DB.prepare(`SELECT id, season_number AS seasonNumber, started_at AS startedAt,
     finished_at AS finishedAt, rating, created_at AS createdAt
@@ -691,16 +712,19 @@ async function saveSeasonViewing(request,env,movieId) {
   if (finish && finish < start) throw new ValidationError("Finish date must not precede start.");
   const rating = validateViewingRating(data.rating);
   if (!finish && rating !== null) throw new ValidationError("Finish the season before rating it.");
+  let entryId;
   if (data.id != null) {
     const old = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(data.id,movieId).first();
     if (!old) return json({error:"Season viewing not found."},404);
     await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
       WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,data.id,movieId).run();
+    entryId=data.id;
   } else {
-    await env.DB.prepare(`INSERT INTO season_viewings(movie_id,season_number,started_at,finished_at,rating)
+    const result=await env.DB.prepare(`INSERT INTO season_viewings(movie_id,season_number,started_at,finished_at,rating)
       VALUES (?,?,?,?,?)`).bind(movieId,season,start,finish,rating).run();
+    entryId=result.meta.last_row_id;
   }
-  if (rating !== null) await setCurrentRating(env,movieId,rating);
+  await registerRating(env,movieId,rating,"season",entryId);
   await refreshViewingSummary(env,movieId);
   return json({ seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId) });
 }
@@ -708,6 +732,7 @@ async function removeSeasonViewing(env,movieId,entryId) {
   const existing = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
   if (!existing) return json({error:"Season viewing not found."},404);
   await env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).run();
+  await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env,movieId);
   return json({seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
@@ -718,7 +743,7 @@ async function reviseWatchRating(request,env,movieId,entryId) {
   const row = await env.DB.prepare("SELECT id FROM watch_history WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
   if (!row) return json({error:"Viewing not found."},404);
   await env.DB.prepare("UPDATE watch_history SET rating=? WHERE id=?").bind(rating,entryId).run();
-  if (rating !== null) await setCurrentRating(env,movieId,rating);
+  await registerRating(env,movieId,rating,"watch",entryId);
   return json({events:await listViewingEvents(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
 async function refreshViewingSummary(env, movieId) {
@@ -777,7 +802,7 @@ async function addViewingEvent(request, env, movieId) {
   ).bind(row.id, viewer)));
   if (rating !== null) {
     await env.DB.prepare("UPDATE watch_history SET rating = ? WHERE id = ?").bind(rating,row.id).run();
-    await setCurrentRating(env,movieId,rating);
+    await registerRating(env,movieId,rating,"watch",row.id);
   }
   await refreshViewingSummary(env, movieId);
   return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) }, 201);
@@ -786,6 +811,7 @@ async function addViewingEvent(request, env, movieId) {
 async function deleteViewingEvent(env, movieId, eventId) {
   const result = await env.DB.prepare("DELETE FROM watch_history WHERE id = ? AND movie_id = ?").bind(eventId, movieId).run();
   if (!result.meta.changes) return json({ error: "Viewing event not found." }, 404);
+  await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env, movieId);
   return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) });
 }
@@ -835,7 +861,7 @@ async function readBackup(request) {
 async function restoreBackup(env, snapshot) {
   // One atomic D1 transaction. No existing rows are deleted until full validation passes.
   const statements = [
-    "DELETE FROM season_viewings", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
+    "DELETE FROM rating_changes", "DELETE FROM season_viewings", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
     "DELETE FROM movie_progress", "DELETE FROM movie_posters", "DELETE FROM movies",
   ].map((sql) => env.DB.prepare(sql));
   for (const person of snapshot.profiles) {
@@ -874,6 +900,11 @@ async function restoreBackup(env, snapshot) {
       "INSERT INTO season_viewings(id, movie_id, season_number, started_at, finished_at, rating, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).bind(season.id, season.movieId, season.seasonNumber, season.startedAt, season.finishedAt || null, season.rating ?? null,
       season.createdAt || new Date().toISOString()));
+  }
+  for (const change of snapshot.ratingChanges || []) {
+    statements.push(env.DB.prepare(`INSERT INTO rating_changes(id,movie_id,source_type,source_id,rating,created_at)
+      VALUES (?,?,?,?,?,?)`).bind(change.id,change.movieId,change.sourceType,change.sourceId ?? null,
+       change.rating,change.createdAt || new Date().toISOString()));
   }
   for (const viewer of snapshot.watchAttendance) {
     statements.push(env.DB.prepare(

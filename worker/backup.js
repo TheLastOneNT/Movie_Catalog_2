@@ -15,7 +15,10 @@ function validId(value) { return Number.isSafeInteger(value) && value > 0; }
 export function validateBackup(snapshot) {
   ensure(snapshot && typeof snapshot === "object" && !Array.isArray(snapshot), "Invalid backup file.");
   ensure(snapshot.schemaVersion === 3 || snapshot.schemaVersion === 4, "Only Movie Catalog v3/v4 backups can be restored.");
-  if (snapshot.schemaVersion === 4) ensure(Array.isArray(snapshot.seasonViewings) && snapshot.seasonViewings.length <= 20000, "Invalid season viewing history.");
+  if (snapshot.schemaVersion === 4) {
+    ensure(Array.isArray(snapshot.seasonViewings) && snapshot.seasonViewings.length <= 20000, "Invalid season viewing history.");
+    ensure(Array.isArray(snapshot.ratingChanges) && snapshot.ratingChanges.length <= 40000, "Invalid rating history.");
+  }
   ensure(Array.isArray(snapshot.movies) && snapshot.movies.length <= 2000, "Invalid movie collection.");
   ensure(Array.isArray(snapshot.profiles) && snapshot.profiles.length === 2, "Missing family profiles.");
   ensure(Array.isArray(snapshot.watchHistory) && snapshot.watchHistory.length <= 20000, "Invalid viewing history.");
@@ -64,6 +67,16 @@ export function validateBackup(snapshot) {
       (!season.finishedAt || (typeof season.finishedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(season.finishedAt) &&
         season.finishedAt >= season.startedAt)) && validRating(season.rating) &&
       (season.finishedAt || season.rating == null), "Invalid season viewing period.");
+  }
+  const changeIds = new Set();
+  for (const change of (snapshot.ratingChanges || [])) {
+    ensure(validId(change.id) && !changeIds.has(change.id) && movieIds.has(change.movieId), "Invalid rating history ID.");
+    changeIds.add(change.id);
+    ensure(["manual","watch","season"].includes(change.sourceType) && validRating(change.rating)
+      && change.rating != null && (change.sourceId == null || validId(change.sourceId)), "Invalid rating change.");
+    if (change.sourceType === "watch") ensure(eventIds.has(change.sourceId), "Orphan viewing rating.");
+    if (change.sourceType === "season") ensure(seasonIds.has(change.sourceId), "Orphan season rating.");
+    if (change.sourceType === "manual") ensure(change.sourceId == null, "Invalid manual rating.");
   }
   for (const attendee of snapshot.watchAttendance) {
     ensure(eventIds.has(attendee.watchId) && (attendee.memberId === 1 || attendee.memberId === 2), "Invalid viewing attendee.");
