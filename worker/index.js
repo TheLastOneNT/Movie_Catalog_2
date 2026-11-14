@@ -76,17 +76,35 @@ function assertSameOrigin(request, url) {
 
 // Derive the visible rating at read time, so older ratings entered in a
 // different order are corrected immediately after deployment (no DB migration).
+// Series ratings aggregate the latest *rated* completed viewing of each
+// distinct season. Ratings are not weighted by how often a season was rewatched.
+// Movies keep their existing latest-calendar-date semantics.
 const EFFECTIVE_RATING_SQL = `(
-  SELECT rating FROM (
-    SELECT wh.rating AS rating, substr(wh.watched_at,1,10) AS viewed_date, wh.id AS source_id, 2 AS priority
+  CASE WHEN m.category='series' THEN
+    COALESCE((
+      SELECT ROUND(AVG(latest.rating),2)
+      FROM (
+        SELECT sv.rating, ROW_NUMBER() OVER (
+          PARTITION BY sv.season_number
+          ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC
+        ) AS recency
+        FROM season_viewings sv
+        WHERE sv.movie_id=m.id AND sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
+      ) latest WHERE latest.recency=1
+    ), (
+      SELECT rc.rating FROM rating_changes rc
+      WHERE rc.movie_id=m.id AND rc.source_type='manual'
+      ORDER BY rc.id DESC LIMIT 1
+    ))
+  ELSE (
+    SELECT rating FROM (
+      SELECT wh.rating AS rating, substr(wh.watched_at,1,10) AS viewed_date,wh.id AS source_id,2 AS priority
       FROM watch_history wh WHERE wh.movie_id=m.id
-    UNION ALL
-    SELECT sv.rating AS rating, sv.finished_at AS viewed_date, sv.id AS source_id, 2 AS priority
-      FROM season_viewings sv WHERE sv.movie_id=m.id AND sv.finished_at IS NOT NULL
-    UNION ALL
-    SELECT rc.rating AS rating, '0000-00-00' AS viewed_date, rc.id AS source_id, 1 AS priority
+      UNION ALL
+      SELECT rc.rating,'0000-00-00' AS viewed_date,rc.id AS source_id,1 AS priority
       FROM rating_changes rc WHERE rc.movie_id=m.id AND rc.source_type='manual'
-  ) ORDER BY viewed_date DESC, priority DESC, source_id DESC LIMIT 1
+    ) ORDER BY viewed_date DESC,priority DESC,source_id DESC LIMIT 1
+  ) END
 )`;
 function mapMovie(row) {
   return {
@@ -683,20 +701,10 @@ function validateViewingDay(value) {
   return value;
 }
 async function refreshCurrentRating(env,movieId) {
-  // Latest by viewing DATE, not by insertion or modification time.
-  // Direct/manual rating is a fallback when no dated rating exists.
-  const row = await env.DB.prepare(`
-    SELECT rating FROM (
-      SELECT rating, substr(watched_at,1,10) AS viewed_date, id AS source_id, 2 AS priority
-      FROM watch_history WHERE movie_id=?
-      UNION ALL
-      SELECT rating, finished_at AS viewed_date, id AS source_id, 2 AS priority
-      FROM season_viewings WHERE movie_id=? AND finished_at IS NOT NULL
-      UNION ALL
-      SELECT rating, '0000-00-00' AS viewed_date, id AS source_id, 1 AS priority
-      FROM rating_changes WHERE movie_id=? AND source_type='manual'
-    ) ORDER BY viewed_date DESC, priority DESC, source_id DESC LIMIT 1
-  `).bind(movieId,movieId,movieId).first();
+  // Keep stored progress consistent with the derived catalogue rating. This
+  // runs when either a watch, season, or manual rating is modified.
+  const row = await env.DB.prepare(`SELECT ${EFFECTIVE_RATING_SQL} AS rating
+    FROM movies m WHERE m.id=?`).bind(movieId).first();
   const rating = row?.rating ?? null;
   await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at)
     VALUES (?,'unwatched',?,?)
