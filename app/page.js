@@ -357,6 +357,7 @@ function PosterReviewPanel({ language, movies, onClose, onApplied }) {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const en = language === "en";
@@ -376,6 +377,27 @@ function PosterReviewPanel({ language, movies, onClose, onApplied }) {
       setError(err.message || "TMDB unavailable");
     } finally {
       setLoading(false);
+    }
+  };
+  const downloadBackup = async () => {
+    setBackupLoading(true); setError("");
+    try {
+      const response = await fetch("/api/export", { credentials: "same-origin" });
+      if (!response.ok) throw new Error(en ? "Backup failed" : "Не удалось скачать резервную копию");
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `movie-catalog-before-posters-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 20000);
+      setBackupConfirmed(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBackupLoading(false);
     }
   };
   const apply = async () => {
@@ -427,10 +449,10 @@ function PosterReviewPanel({ language, movies, onClose, onApplied }) {
       })}
       {error && <p role="alert" className="formError">{error}</p>}
       {message && <p role="status">{message}</p>}
-      <label className="posterBackupCheck">
-        <input type="checkbox" checked={backupConfirmed} onChange={(event) => setBackupConfirmed(event.target.checked)} />
-        {en ? "I have downloaded a fresh JSON backup before replacing posters" : "Я скачал свежую JSON-копию коллекции перед заменой постеров"}
-      </label>
+      <div className="posterBackupCheck">
+        <button type="button" onClick={downloadBackup} disabled={backupLoading || applying}>{backupLoading ? "…" : (en ? "Download backup" : "Скачать резервную копию")}</button>
+        <span>{backupConfirmed ? (en ? "Backup requested ✓" : "Копия скачана ✓") : (en ? "Backup required before applying" : "Перед заменой обязательно скачайте копию")}</span>
+      </div>
       <div className="posterReviewActions">
         <button type="button" disabled={!offset || loading || applying} onClick={() => scan(Math.max(0,offset-pageSize))}>{en ? "Previous" : "Назад"}</button>
         <button type="button" disabled={loading || applying || offset + pageSize >= movies.length} onClick={() => scan(offset+pageSize)}>{en ? "Next six" : "Следующие 6"}</button>
