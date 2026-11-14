@@ -701,12 +701,14 @@ async function saveSeasonViewing(request,env,movieId) {
       VALUES (?,?,?,?,?)`).bind(movieId,season,start,finish,rating).run();
   }
   if (rating !== null) await setCurrentRating(env,movieId,rating);
+  await refreshViewingSummary(env,movieId);
   return json({ seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId) });
 }
 async function removeSeasonViewing(env,movieId,entryId) {
   const existing = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
   if (!existing) return json({error:"Season viewing not found."},404);
   await env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).run();
+  await refreshViewingSummary(env,movieId);
   return json({seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
 async function reviseWatchRating(request,env,movieId,entryId) {
@@ -723,13 +725,18 @@ async function refreshViewingSummary(env, movieId) {
   const last = await env.DB.prepare(
     "SELECT MAX(watched_at) AS latest, COUNT(*) AS total FROM watch_history WHERE movie_id = ?",
   ).bind(movieId).first();
-  const status = last.total ? "watched" : "unwatched";
+  const seasons = await env.DB.prepare(
+    "SELECT MAX(finished_at) AS latest, COUNT(*) AS total FROM season_viewings WHERE movie_id = ? AND finished_at IS NOT NULL",
+  ).bind(movieId).first();
+  const total = Number(last.total || 0) + Number(seasons.total || 0);
+  const latest = [last.latest,seasons.latest].filter(Boolean).sort().at(-1) || null;
+  const status = total ? "watched" : "unwatched";
   await env.DB.prepare(`
     INSERT INTO movie_progress (movie_id, status, last_watched_at, watch_count, updated_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(movie_id) DO UPDATE SET status=excluded.status,
       last_watched_at=excluded.last_watched_at, watch_count=excluded.watch_count, updated_at=excluded.updated_at
-  `).bind(movieId, status, last.latest || null, Number(last.total), new Date().toISOString()).run();
+  `).bind(movieId, status, latest, total, new Date().toISOString()).run();
 }
 
 async function listViewingEvents(env, movieId) {

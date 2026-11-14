@@ -14,7 +14,8 @@ function validId(value) { return Number.isSafeInteger(value) && value > 0; }
 
 export function validateBackup(snapshot) {
   ensure(snapshot && typeof snapshot === "object" && !Array.isArray(snapshot), "Invalid backup file.");
-  ensure(snapshot.schemaVersion === 3, "Only complete Movie Catalog v3 backups can be restored.");
+  ensure(snapshot.schemaVersion === 3 || snapshot.schemaVersion === 4, "Only Movie Catalog v3/v4 backups can be restored.");
+  if (snapshot.schemaVersion === 4) ensure(Array.isArray(snapshot.seasonViewings) && snapshot.seasonViewings.length <= 20000, "Invalid season viewing history.");
   ensure(Array.isArray(snapshot.movies) && snapshot.movies.length <= 2000, "Invalid movie collection.");
   ensure(Array.isArray(snapshot.profiles) && snapshot.profiles.length === 2, "Missing family profiles.");
   ensure(Array.isArray(snapshot.watchHistory) && snapshot.watchHistory.length <= 20000, "Invalid viewing history.");
@@ -48,9 +49,21 @@ export function validateBackup(snapshot) {
     }
   }
   for (const event of snapshot.watchHistory) {
+    ensure(snapshot.schemaVersion === 3 || validRating(event.rating), "Invalid viewing rating.");
     ensure(validId(event.id) && !eventIds.has(event.id) && movieIds.has(event.movieId)
       && validDate(event.watchedAt) && event.watchedAt, "Invalid viewing event.");
     eventIds.add(event.id);
+  }
+  const seasonIds = new Set();
+  for (const season of (snapshot.seasonViewings || [])) {
+    ensure(validId(season.id) && !seasonIds.has(season.id) && movieIds.has(season.movieId), "Invalid season viewing ID.");
+    seasonIds.add(season.id);
+    ensure(Number.isInteger(season.seasonNumber) && season.seasonNumber >= 1 && season.seasonNumber <= 200,
+      "Invalid season number.");
+    ensure(typeof season.startedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(season.startedAt) &&
+      (!season.finishedAt || (typeof season.finishedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(season.finishedAt) &&
+        season.finishedAt >= season.startedAt)) && validRating(season.rating) &&
+      (season.finishedAt || season.rating == null), "Invalid season viewing period.");
   }
   for (const attendee of snapshot.watchAttendance) {
     ensure(eventIds.has(attendee.watchId) && (attendee.memberId === 1 || attendee.memberId === 2), "Invalid viewing attendee.");
@@ -61,7 +74,7 @@ export function validateBackup(snapshot) {
     ensure(IMAGE_TYPES.has(poster.contentType) && typeof poster.base64 === "string"
       && /^[A-Za-z0-9+/]*={0,2}$/.test(poster.base64) && poster.base64.length <= 2_100_000, "Invalid poster data.");
   }
-  return { movies: snapshot.movies.length, views: snapshot.watchHistory.length, posters: snapshot.moviePosters.length };
+  return { movies: snapshot.movies.length, views: snapshot.watchHistory.length, seasons: (snapshot.seasonViewings || []).length, posters: snapshot.moviePosters.length };
 }
 
 export function bytesToBase64(data) {
