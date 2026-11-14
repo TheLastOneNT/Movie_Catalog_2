@@ -836,6 +836,23 @@ export default function Home() {
     finally { setWatchSubmitting(false); }
   };
 
+  const updateWatchRating = async (eventId, rating) => {
+    setSyncState("saving");
+    try {
+      const response = await fetch(`/api/movies/${selectedId}/watches/${eventId}/rating`, {
+        method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},
+        body:JSON.stringify({rating}),
+      });
+      if (!response.ok) throw new Error("Could not update viewing rating.");
+      const data = await response.json();
+      setHistoryEvents(data.events);
+      setMovies((current)=>current.map((movie)=>movie.id === selectedId ? data.movie : movie));
+      setSyncState("synced");
+    } catch {
+      await loadCatalog();
+      setSyncState("error");
+    }
+  };
   const removeWatch = async (eventId) => {
     const response = await fetch(`/api/movies/${selectedId}/watches/${eventId}`, {
       method: "DELETE", credentials: "same-origin",
@@ -1316,7 +1333,9 @@ export default function Home() {
                     {historyLoading ? <p>{t.modal.historyLoading}</p> : historyEvents.length ? <ul>
                       {historyEvents.map((event) => <li key={event.id} className="watchEvent">
                         <div><strong>{new Intl.DateTimeFormat(t.locale, {day:"numeric",month:"long",year:"numeric"}).format(new Date(event.watchedAt))}</strong>
-                          {event.rating != null && <span className="watchEventRating">★ {event.rating}/5</span>}
+                          <div className="watchEventRating"><span>{language === "en" ? "Rating" : "Оценка"}:</span>
+                            <Stars value={event.rating || 0} onChange={(rating)=>updateWatchRating(event.id,rating)} compact label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
+                          </div>
                         </div>
                         <button type="button" onClick={() => setConfirmDelete({kind:"watch",id:event.id})} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
                       </li>)}
