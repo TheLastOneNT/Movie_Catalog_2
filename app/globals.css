@@ -617,3 +617,27 @@ img { display: block; max-width: 100%; }
 .historyPanel .watchEventLine strong { white-space:nowrap; font-size:13px; font-weight:500; }
 .historyPanel .watchEventRatingSelect { flex:0 0 76px; width:76px; min-width:0; max-width:76px; height:36px; padding:4px; border:1px solid rgba(214,173,99,.35); border-radius:6px; color:#e6bd74; background:#231f23; font-size:13px; text-align:center; }
 .historyPanel .watchEvent > button { flex:0 0 auto; }
+
+/* Dedicated date-range calendar; no native date inputs or intrinsic width bugs. */
+.seasonRangeField { grid-column:span 2; min-width:0; max-width:100%; width:100%; position:relative; display:flex; flex-direction:column; gap:7px; }
+.seasonRangeTrigger { width:100%; max-width:100%; min-width:0; display:flex; align-items:center; gap:10px; height:46px; padding:0 12px; border:1px solid #514843; border-radius:6px; background:#151318; color:#f5efe8; text-align:left; cursor:pointer; }
+.seasonRangeTrigger svg { color:#ddba7a; flex:0 0 auto; }
+.seasonRangeText { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.seasonRangeSeparator { color:#d8b773; padding:0 3px; }
+.seasonCalendar { width:100%; max-width:100%; min-width:0; padding:12px; background:#171519; border:1px solid #504638; border-radius:9px; box-shadow:0 12px 25px rgba(0,0,0,.3); }
+.seasonCalendarHead { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+.seasonCalendarHead strong { font-size:15px; font-weight:650; text-transform:capitalize; }
+.seasonCalendarHead button { width:40px; height:38px; border:1px solid #4c4034; background:#242025; border-radius:6px; color:#e7c788; cursor:pointer; font-size:24px; }
+.seasonCalendarHint { margin:0 0 10px!important; font-size:12px!important; line-height:1.35; color:#a9a3a1; }
+.seasonCalendarGrid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; align-items:center; }
+.seasonCalendarWeekday { text-align:center; font-size:10px; color:#89848a; padding:7px 0; }
+.seasonCalendarDay { padding:0; width:100%; min-width:0; height:38px; font-size:13px; background:transparent; border:0; color:#eee9df; border-radius:5px; cursor:pointer; }
+.seasonCalendarDay.inside { background:#312b26; color:#efcf91; border-radius:0; }
+.seasonCalendarDay.start,.seasonCalendarDay.end { background:#d3ae72; color:#151115; font-weight:700; }
+.seasonCalendarActions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:7px; margin-top:14px; }
+.seasonCalendarActions button { background:#252126; border:1px solid #4b433b; border-radius:6px; min-height:34px; padding:7px 9px; color:#d6bd94; font-size:12px; cursor:pointer; }
+@media(max-width:680px) {
+  .seasonRangeField { flex:1 1 auto; width:100%; }
+  .seasonCalendar { box-sizing:border-box; }
+  .seasonCalendarDay { height:42px; }
+}
