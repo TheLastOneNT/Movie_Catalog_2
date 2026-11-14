@@ -1,4 +1,5 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
+import { averageRatedSeasons } from "../lib/series-cycles.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
@@ -744,7 +745,6 @@ async function listSeasonViewings(env,movieId) {
     .bind(movieId).all();
   return entries.results;
 }
-function roundOne(value) { return Math.round((value+Number.EPSILON)*10)/10; }
 async function listSeriesCycles(env,movieId) {
   const cycles = (await env.DB.prepare(`SELECT id, started_at AS startedAt, ended_at AS endedAt,
     outcome, created_at AS createdAt FROM series_cycles WHERE movie_id=?
@@ -752,16 +752,7 @@ async function listSeriesCycles(env,movieId) {
   const entries=await listSeasonViewings(env,movieId);
   return cycles.map(cycle=>{
     const seasons=entries.filter(entry=>entry.cycleId===cycle.id);
-    const mostRecent=new Map();
-    for(const season of seasons) {
-      if(season.rating==null||!season.finishedAt)continue;
-      const old=mostRecent.get(season.seasonNumber);
-      if(!old || season.finishedAt>old.finishedAt ||
-        (season.finishedAt===old.finishedAt&&season.id>old.id))mostRecent.set(season.seasonNumber,season);
-    }
-    const scores=[...mostRecent.values()].map(value=>value.rating);
-    return {...cycle,seasons,average:scores.length?roundOne(scores.reduce((a,b)=>a+b,0)/scores.length):null,
-      ratedSeasons:scores.length};
+    return {...cycle,seasons,...averageRatedSeasons(seasons)};
   });
 }
 async function createSeriesCycle(env,movieId) {
