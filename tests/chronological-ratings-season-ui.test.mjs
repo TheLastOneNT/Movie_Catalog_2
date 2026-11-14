@@ -10,16 +10,16 @@ test("films keep chronological latest viewing ratings",()=>{
   const start=worker.indexOf("const EFFECTIVE_RATING_SQL");
   const end=worker.indexOf("function mapMovie(",start);
   const sql=worker.slice(start,end);
-  assert.match(sql,/substr\(wh\.watched_at,1,10\) AS viewed_date/);
-  assert.match(sql,/ORDER BY viewed_date DESC/);
-  assert.match(sql,/FROM watch_history wh WHERE wh.movie_id=m.id/);
+  assert.match(sql,/ORDER BY substr\(wh\.watched_at,1,10\) DESC/);
+  assert.match(sql,/SELECT wh.rating FROM watch_history wh/);
+  assert.match(sql,/WHERE wh.movie_id=m.id/);
 });
 test("series average each season's most recent rated completed viewing",()=>{
   const sql=worker.slice(worker.indexOf("const EFFECTIVE_RATING_SQL"),worker.indexOf("function mapMovie("));
   assert.match(sql,/CASE WHEN m\.category='series' THEN/);
   assert.match(sql,/ROUND\(AVG\(latest\.rating\),1\)/);
-  assert.match(sql,/PARTITION BY sv\.movie_id, sv\.season_number/);
-  assert.match(sql,/latest\.movie_id=m\.id AND latest\.recency=1/);
+  assert.match(sql,/PARTITION BY sv\.movie_id,sv\.season_number/);
+  assert.match(sql,/latest\.movie_id=m\.id AND latest\.recent=1/);
 });
 
 test("season viewings are listed by dates rather than season number",()=>{

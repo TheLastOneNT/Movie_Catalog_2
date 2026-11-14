@@ -204,6 +204,18 @@ async function optimizePoster(file) {
   }
 }
 
+function ViewingDateField({value,onChange,label,disabled=false,max}) {
+  const locale = label && /date|watched|view/i.test(label) ? "en-US" : "ru-RU";
+  const dateText=value ? new Intl.DateTimeFormat(locale,{
+    year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
+  }).format(new Date(`${value.slice(0,10)}T12:00:00Z`)) : "—";
+  return <span className={disabled?"viewingDateField disabled":"viewingDateField"}>
+    <span className="viewingDateFieldText">{dateText}</span><Icon name="calendar" size={18}/>
+    <input type="date" aria-label={label} value={value} disabled={disabled} max={max}
+      onChange={(event)=>onChange(event.target.value)}/>
+  </span>;
+}
+
 function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   const initialForm = {
     title: "",
@@ -214,6 +226,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     rating: null,
     lastWatchedAt: "",
     description: "",
+    wantToWatch: false,
   };
   const [form, setForm] = useState(initialMovie ? {
     title: initialMovie.title || "", titleEn: initialMovie.titleEn || "", descriptionEn: initialMovie.descriptionEn || "", category: initialMovie.category,
@@ -259,7 +272,11 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     return () => URL.revokeObjectURL(url);
   }, [poster]);
 
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const update = (field,value)=>setForm(current=>({...current,[field]:value,
+    ...(field==="status"?{wantToWatch:value==="watchlist",
+      rating:value==="watched"?current.rating:null,
+      lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):""}:{}),
+  }));
   const submit = async (event) => {
     event.preventDefault();
     setSubmitting(true);
@@ -314,13 +331,14 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
                 {statusOrder.map((item) => <option key={item} value={item}>{labels.catalog[item]}</option>)}
+                <option value="watchlist">{labels.family.watchlist}</option>
               </select>
             </label>}
             {!initialMovie && <label>
               <span>{labels.addMovie.watchedAt}</span>
-              <input type="date" disabled={form.status !== "watched"} value={form.lastWatchedAt} onChange={(event) => update("lastWatchedAt", event.target.value)} />
+              <ViewingDateField disabled={form.status !== "watched"} value={form.lastWatchedAt} label={labels.addMovie.watchedAt} onChange={(value) => update("lastWatchedAt", value)} />
             </label>}
-            {!initialMovie && <div className="addRating wideField">
+            {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
               <span>{labels.addMovie.rating}</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
@@ -671,6 +689,7 @@ export default function Home() {
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
+  const [zoomPoster, setZoomPoster] = useState(null);
   const [randomHistory, setRandomHistory] = useState([]);
   const [randomIndex, setRandomIndex] = useState(-1);
   const [noteDraft, setNoteDraft] = useState("");
@@ -766,6 +785,7 @@ export default function Home() {
     const selected = movies.find((movie) => movie.id === selectedId);
     setNoteDraft(selected ? personalFor(selected, activeMember).notes : "");
     setHistoryOpen(false);
+    setZoomPoster(null);
     setHistoryDates([]);
     setHistoryEvents([]);
     setWatchDate(todayLocal());
@@ -1111,6 +1131,8 @@ export default function Home() {
         releaseYear: form.releaseYear || null,
         posterFromTmdb: posterFile ? null : tmdbPoster,
         lastWatchedAt: form.status === "watched" ? form.lastWatchedAt || null : null,
+        status: form.status === "watched" ? "watched" : "unwatched",
+        wantToWatch: form.status === "watchlist",
       }),
     });
     const data = await response.json();
@@ -1368,7 +1390,7 @@ export default function Home() {
           )}
           <section className={randomMode ? "movieModal randomMode" : "movieModal"} role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => event.stopPropagation()}>
             <button type="button" className="modalClose" onClick={closeMovie} aria-label={t.modal.close}><Icon name="close" size={22} /></button>
-            <div className="modalPoster"><img src={selected.poster} alt={selected.title} /></div>
+            <div className="modalPoster"><button type="button" className="modalPosterZoom" onClick={()=>setZoomPoster({src:selected.poster,title:selected.title})} aria-label={language==="en"?"Enlarge poster":"Увеличить постер"}><img src={selected.poster} alt={selected.title}/><span className="posterZoomHint">{language==="en"?"View full size":"Увеличить"}</span></button></div>
             <div className="modalInfo">
               <span className="modalCategory">{t.categories[selected.category]}</span>
               <h2>{language === "en" && selected.titleEn ? selected.titleEn : selected.title}</h2>
@@ -1378,9 +1400,9 @@ export default function Home() {
               <div className="familyRatings"><span>{selected.category === "series"
                 ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")
                 : (language === "en" ? "Current rating" : "Актуальная оценка")}</span>
-                {selected.category === "series" && selected.progress.rating != null
-                  ? <span className="seriesAverageRating">★ {Number(selected.progress.rating).toLocaleString(language === "en" ? "en-US" : "ru-RU", {maximumFractionDigits:1})}/5</span>
-                  : <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id,rating)} label={t.modal.rating} />}
+                <span className="seriesAverageRating" aria-live="polite">{selected.progress.rating == null
+                  ? (language === "en" ? "No rating yet" : "Пока без оценки")
+                  : `★ ${Number(selected.progress.rating).toLocaleString(language === "en" ? "en-US" : "ru-RU",{maximumFractionDigits:1})}/5`}</span>
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
 
@@ -1408,7 +1430,7 @@ export default function Home() {
                 : <>
                   <div className="watchRecorder">
                     <h3>{t.family.recordWatch}</h3>
-                    <label className="watchDate"><span>{t.modal.date}</span><input type="date" value={watchDate} max={todayLocal()} onChange={(event) => setWatchDate(event.target.value)} /></label>
+                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} max={todayLocal()} onChange={setWatchDate} /></label>
                     <div className="watchRatingInput">
                       <span>{language === "en" ? "Rating for this viewing (optional)" : "Оценка этого просмотра (необязательно)"}</span>
                       <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
@@ -1491,6 +1513,10 @@ export default function Home() {
         />
       )}
 
+      {zoomPoster && <div className="posterLightbox" role="presentation" onMouseDown={()=>setZoomPoster(null)}>
+        <div className="posterLightboxContent" role="dialog" aria-modal="true" aria-label={zoomPoster.title} onMouseDown={event=>event.stopPropagation()}>
+          <button type="button" className="posterLightboxClose" aria-label={t.modal.close} onClick={()=>setZoomPoster(null)}>✕</button><img src={zoomPoster.src} alt={zoomPoster.title}/>
+        </div></div>}
       {(addMovieOpen || editingMovie) && (
         <AddMovieModal labels={t} initialMovie={editingMovie} onClose={() => { setAddMovieOpen(false); setEditingMovie(null); }} onCreate={editingMovie ? saveEditedMovie : createMovie} />
       )}
