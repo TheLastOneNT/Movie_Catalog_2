@@ -12,8 +12,8 @@ test("top level header provides a dedicated info panel and one random action",()
 test("status dropdown retains only actionable filters",()=>{
  assert.doesNotMatch(page,/<option value="rewatch">/);
  assert.doesNotMatch(page,/<option value="rated">/);
+ assert.doesNotMatch(page,/<option value="favorites">/);
  assert.match(page,/<option value="watchlist">/);
- assert.match(page,/<option value="favorites">/);
 });
 test("sort controls offer default, best rated and long unseen",()=>{
  assert.match(page,/<option value="random">Обычный порядок<\/option>/);
@@ -24,5 +24,6 @@ test("sort controls offer default, best rated and long unseen",()=>{
 });
 test("info panel includes film counts and has mobile layout",()=>{
  assert.match(page,/\{watchlistCount\}/);
+ assert.match(page,/\{fiveStarCount\}/);
  assert.match(css,/\.collectionInfoStats/);
 });

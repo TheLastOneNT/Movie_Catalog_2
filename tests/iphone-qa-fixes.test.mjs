@@ -6,9 +6,10 @@ const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8
 test("iPhone date field cannot expand outside modal", () => {
   assert.match(css, /\.watchDate input\[type="date"\][^\n]*min-width: 0/);
 });
-test("compact list puts actions beside rather than over poster", () => {
-  assert.match(page, /className="cardQuickActions"/);
-  assert.match(css, /\.movieCardList \.cardQuickActions \{ grid-column: 3/);
+test("compact list shows unobstructed poster and information beside it", () => {
+  assert.match(page, /className="posterFrame"/);
+  assert.doesNotMatch(page, /className="cardQuickActions"/);
+  assert.match(css, /\.movieCardList \{ grid-template-columns: 94px minmax\(0, 1fr\)/);
   assert.match(css, /\.movieCardList \.posterFrame \{ grid-column: 1/);
 });
 test("mobile sorting dropdown uses full row", () => {

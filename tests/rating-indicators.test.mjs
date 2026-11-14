@@ -7,10 +7,10 @@ test("catalog displays ratings or watched mark without interactive overlays",()=
  assert.match(page,/className=\{rating \? "cardRatingBadge" : "cardRatingBadge viewed"\}/);
  assert.doesNotMatch(page,/className="cardQuickActions"/);
  assert.doesNotMatch(page,/className=\{personal\.isFavorite \? "favoriteButton/);
- assert.match(css,/pointer-events: none;/);
+ assert.match(css,/\.cardRatingBadge \{[^\n]*pointer-events: none;/);
 });
 test("list cards display rating followed by details",()=>{
- assert.match(page,/className="listRatingLabel viewed"/);
+ assert.match(page,/rating \? "listRatingLabel" : "listRatingLabel viewed"/);
  assert.match(page,/className="moreLink cardDetailsButton"/);
  assert.match(css,/\.movieCardList \.cardBottom \{ display: flex; flex-direction: column;/);
 });
