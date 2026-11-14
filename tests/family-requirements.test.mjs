@@ -12,7 +12,8 @@ test("one shared family rating is shown on cards and editable in details", () =>
 });
 test("rating update does not change viewing history or statuses", () => {
   assert.match(worker, /async function updateSharedRating/);
-  assert.match(worker, /DO UPDATE SET rating = excluded\.rating, updated_at = excluded\.updated_at/);
+  assert.match(worker, /await registerRating\(env,movieId,input\.rating,"manual"\)/);
+  assert.match(worker, /ON CONFLICT\(movie_id\) DO UPDATE SET rating=excluded\.rating/);
   assert.match(worker, /ratingMatch && request\.method === "PATCH"/);
 });
 test("TMDB searches for artwork in the original language", () => {
