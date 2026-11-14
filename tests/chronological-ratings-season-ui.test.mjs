@@ -6,17 +6,22 @@ const worker = await readFile(new URL("../worker/index.js",import.meta.url),"utf
 const page = await readFile(new URL("../app/page.js",import.meta.url),"utf8");
 const css = await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
 
-test("current rating is selected by viewing date, not last edit",()=>{
-  const start=worker.indexOf("async function refreshCurrentRating(");
-  const end=worker.indexOf("async function registerRating(",start);
-  const query=worker.slice(start,end);
-  assert.match(query,/substr\(watched_at,1,10\) AS viewed_date/);
-  assert.match(query,/finished_at AS viewed_date/);
-  assert.match(query,/ORDER BY viewed_date DESC/);
-  assert.match(query,/FROM watch_history WHERE movie_id=\?/);
-  assert.doesNotMatch(query,/FROM watch_history WHERE movie_id=\? AND rating IS NOT NULL/);
-  assert.doesNotMatch(query,/ORDER BY rc.id DESC/);
+test("films keep chronological latest viewing ratings",()=>{
+  const start=worker.indexOf("const EFFECTIVE_RATING_SQL");
+  const end=worker.indexOf("function mapMovie(",start);
+  const sql=worker.slice(start,end);
+  assert.match(sql,/substr\(wh\.watched_at,1,10\) AS viewed_date/);
+  assert.match(sql,/ORDER BY viewed_date DESC/);
+  assert.doesNotMatch(sql,/ORDER BY rc\.id DESC LIMIT 1\s*\)/);
 });
+test("series average each season's most recent rated completed viewing",()=>{
+  const sql=worker.slice(worker.indexOf("const EFFECTIVE_RATING_SQL"),worker.indexOf("function mapMovie("));
+  assert.match(sql,/CASE WHEN m\.category='series' THEN/);
+  assert.match(sql,/ROUND\(AVG\(latest\.rating\),2\)/);
+  assert.match(sql,/PARTITION BY sv\.movie_id, sv\.season_number/);
+  assert.match(sql,/latest\.movie_id=m\.id AND latest\.recency=1/);
+});
+
 test("season viewings are listed by dates rather than season number",()=>{
   assert.match(worker,/ORDER BY COALESCE\(finished_at,started_at\) DESC, started_at DESC, id DESC/);
 });
@@ -26,10 +31,15 @@ test("watch history shows date and compact editable rating in same row",()=>{
   assert.doesNotMatch(page,/className="watchEventRating"><Stars/);
   assert.match(css,/\.historyPanel \.watchEventLine \{ display:flex;/);
 });
-test("season selector and responsive date controls",()=>{
-  assert.match(page,/Array.from\(\{length:30\}/);
-  assert.doesNotMatch(page,/type="number" min="1" max="200"/);
+test("consistent iPhone date picker avoids native intrinsic-width overflow",()=>{
+  assert.match(page,/function CompactDateField/);
+  assert.match(page,/className="seasonDateControl"/);
+  assert.match(page,/className="seasonDateValue/);
+  assert.match(css,/\.seasonDateControl input\[type="date"\] \{ position:absolute;/);
+  assert.match(css,/\.seasonForm \{ display:flex; flex-direction:column; align-items:stretch;/);
   assert.match(page,/en \? "Finished" : "Закончили"/);
-  assert.match(css,/\.seasonForm \{ grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.match(css,/\.seasonForm :is\(select,input\).*height:46px/);
+});
+test("season selector and compact history use one row",()=>{
+  assert.match(page,/Array.from\(\{length:30\}/);
+  assert.equal((page.match(/className="watchEventRatingSelect"/g)||[]).length,2);
 });

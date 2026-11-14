@@ -84,13 +84,13 @@ const EFFECTIVE_RATING_SQL = `(
     COALESCE((
       SELECT ROUND(AVG(latest.rating),2)
       FROM (
-        SELECT sv.rating, ROW_NUMBER() OVER (
-          PARTITION BY sv.season_number
+        SELECT sv.movie_id, sv.rating, ROW_NUMBER() OVER (
+          PARTITION BY sv.movie_id, sv.season_number
           ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC
         ) AS recency
         FROM season_viewings sv
-        WHERE sv.movie_id=m.id AND sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
-      ) latest WHERE latest.recency=1
+        WHERE sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
+      ) latest WHERE latest.movie_id=m.id AND latest.recency=1
     ), (
       SELECT rc.rating FROM rating_changes rc
       WHERE rc.movie_id=m.id AND rc.source_type='manual'
