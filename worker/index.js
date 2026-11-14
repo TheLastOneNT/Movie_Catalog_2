@@ -288,6 +288,7 @@ async function tmdbDetails(env, mediaType, id) {
     releaseYear: Number((ru.release_date || ru.first_air_date || "").slice(0, 4)) || null,
     posterUrl,
     posterAvailable: Boolean(posterUrl),
+    genreIds: Array.isArray(ru.genres) ? ru.genres.map((genre) => genre.id) : [],
   };
 }
 async function searchTmdb(url, env) {
@@ -301,7 +302,7 @@ async function searchTmdb(url, env) {
       const details = await tmdbDetails(env, item.media_type, item.id);
       return {
         id: item.id,
-        category: item.media_type === "tv" ? "series" : "movies",
+        category: item.media_type === "tv" ? "series" : details.genreIds.includes(16) ? "cartoons" : details.genreIds.includes(99) ? "documentaries" : "movies",
         ...details,
         title: details.title || item.title || item.name || "",
         posterUrl: details.posterUrl || null,
@@ -377,15 +378,15 @@ async function applyTmdbMatch(request, env, movieId) {
       env.DB.prepare(`UPDATE movies SET title_en = COALESCE(?,title_en), description_en = COALESCE(?,description_en),
         description_ru = CASE WHEN description_ru IS NULL OR description_ru = '' THEN ? ELSE description_ru END,
         release_year = COALESCE(release_year,?), poster_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-        .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn,"English description",3000),
-          optionalText(data.description,"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,movieId),
+        .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
+          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,movieId),
     ]);
   } else {
     await env.DB.prepare(`UPDATE movies SET title_en=COALESCE(?,title_en), description_en=COALESCE(?,description_en),
       description_ru=CASE WHEN description_ru IS NULL OR description_ru='' THEN ? ELSE description_ru END,
       release_year=COALESCE(release_year,?),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn,"English description",3000),
-        optionalText(data.description,"Russian description",3000),data.releaseYear,movieId).run();
+      .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
+        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,movieId).run();
   }
   return json({ movie: await getCatalogMovie(env,movieId), posterReplaced: Boolean(data.posterUrl) });
 }
