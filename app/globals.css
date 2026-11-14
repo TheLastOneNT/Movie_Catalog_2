@@ -673,3 +673,49 @@ img { display: block; max-width: 100%; }
 .viewingDateField input[type="date"]::-webkit-calendar-picker-indicator { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
 .viewingDateField.disabled { opacity:.4; }
 .viewingDateField:focus-within { outline:2px solid var(--gold-bright); outline-offset:1px; }
+
+/* v5: cycle groups and controlled date picker. */
+.seriesDiaryHeader h3 { margin:0 0 6px; }
+.seriesDiaryHeader p { margin:0 0 16px; }
+.seriesCycles { display:flex; flex-direction:column; gap:16px; width:100%; min-width:0; }
+.seriesCycle { border:1px solid rgba(212,173,102,.28); border-radius:9px; background:rgba(0,0,0,.14); overflow:hidden; }
+.seriesCycleHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 13px; background:#1c1a1c; }
+.seriesCycleHeader > div:first-child { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.seriesCycleHeader strong { color:#efe8dc; font-size:14px; }
+.seriesCycleHeader small { color:#979196; font-size:11px; }
+.seriesCycleNumber { color:#caa66d; font-size:10px; letter-spacing:.06em; text-transform:uppercase; }
+.seriesCycleScore { color:#e7c07c; font-size:17px; font-weight:650; white-space:nowrap; flex:0 0 auto; }
+.seriesCycle .seasonEntries { margin:0; padding:0 13px; }
+.seriesCycle .seasonEntries li:first-child { border-top:0; }
+.seriesCycleFinish { border-top:1px solid #383035; padding:14px 13px; }
+.seriesCycleFinish p { margin:0 0 12px; }
+.seriesCycleFinish small { display:block; font-size:11px; color:#9f9795; margin-top:8px; }
+.seriesCycleEndButton,.seriesNewCycleButton { display:inline-flex; align-items:center; justify-content:center; min-height:43px; width:100%; padding:11px 14px; border:1px solid #876b43; background:#29221d; color:#f0cc8a; border-radius:7px; font-size:13px; cursor:pointer; }
+.seriesCycleFinishConfirm { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.seriesCycleFinishConfirm button { min-width:0; min-height:44px; padding:6px 8px; border:1px solid #725b47; background:#272126; border-radius:6px; color:#e6d3b4; font-size:11px; cursor:pointer; }
+.seriesCycleFinishConfirm button:last-child { border-color:#945d52; color:#e8aaa0; }
+.seriesNewCycleButton { margin:14px 0 0; background:rgba(213,170,101,.12); }
+.seasonFormTitle { grid-column:1/-1; color:#e8e0d3; font-size:15px; margin:0; }
+.seriesEmptyCycle { padding:18px; border:1px dashed #5f5142; }
+.seriesCycleEndButton:disabled,.seriesNewCycleButton:disabled,.seriesCycleFinishConfirm button:disabled { opacity:.38; cursor:not-allowed; }
+.viewingDayField,.addViewingDate { width:100%; max-width:100%; min-width:0; box-sizing:border-box; display:flex; flex-direction:column; gap:7px; }
+.viewingDayField.disabled { opacity:.45; }
+.viewingDayCalendar { box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
+.viewingDayCalendar .seasonCalendarDay:disabled { opacity:.18; cursor:not-allowed; }
+.addMovieFields .addViewingDate { min-width:0; }
+.watchDate .viewingDayField { width:100%; }
+.posterLightbox { width:100vw; height:100dvh; max-height:100dvh; box-sizing:border-box; overflow:hidden; padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+.posterLightboxContent { width:100%; height:100%; max-width:min(95vw,950px); max-height:calc(100dvh - 54px); overflow:hidden; box-sizing:border-box; }
+.posterLightboxContent img { width:100%; max-width:100%; height:100%; max-height:calc(100dvh - 58px); object-fit:contain; display:block; }
+.posterLightboxClose { position:absolute; right:6px; top:6px; }
+@media(max-width:680px){
+  .seriesCycleHeader { padding:13px 11px; }
+  .seriesCycle .seasonEntries { padding:0 11px; }
+  .seriesCycleFinish { padding:13px 11px; }
+  .seriesCycleFinishConfirm { grid-template-columns:1fr; }
+  .seasonForm { margin-top:16px; }
+  .viewingDayField .seasonRangeTrigger { width:100%; max-width:100%; min-width:0; }
+  .posterLightbox { padding:8px; }
+  .posterLightboxContent { max-width:100%; max-height:calc(100dvh - 16px); height:calc(100dvh - 16px); }
+  .posterLightboxContent img { max-height:calc(100dvh - 24px); }
+}
