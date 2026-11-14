@@ -204,16 +204,51 @@ async function optimizePoster(file) {
   }
 }
 
-function ViewingDateField({value,onChange,label,disabled=false,max}) {
-  const locale = label && /date|watched|view/i.test(label) ? "en-US" : "ru-RU";
-  const dateText=value ? new Intl.DateTimeFormat(locale,{
-    year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
-  }).format(new Date(`${value.slice(0,10)}T12:00:00Z`)) : "—";
-  return <span className={disabled?"viewingDateField disabled":"viewingDateField"}>
-    <span className="viewingDateFieldText">{dateText}</span><Icon name="calendar" size={18}/>
-    <input type="date" aria-label={label} value={value} disabled={disabled} max={max}
-      onChange={(event)=>onChange(event.target.value)}/>
-  </span>;
+// One consistent calendar for the add form and the movie details.
+function ViewingDateField({value,onChange,label,disabled=false,max,language="ru"}) {
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(()=>(value||todayLocal()).slice(0,7));
+  const en=language==="en",locale=en?"en-US":"ru-RU";
+  const year=Number(month.slice(0,4)),monthIndex=Number(month.slice(5,7))-1;
+  const firstWeekday=(new Date(Date.UTC(year,monthIndex,1)).getUTCDay()+6)%7;
+  const monthDays=new Date(Date.UTC(year,monthIndex+1,0)).getUTCDate();
+  const cells=Array.from({length:Math.ceil((firstWeekday+monthDays)/7)*7},(_,i)=>{
+    const day=i-firstWeekday+1;return day>=1&&day<=monthDays?day:null;
+  });
+  const iso=(day)=>`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  const navigate=(offset)=>{
+    const date=new Date(Date.UTC(year,monthIndex+offset,1));
+    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
+  };
+  const pretty=value?new Intl.DateTimeFormat(locale,{year:"numeric",month:"short",day:"numeric",timeZone:"UTC"})
+    .format(new Date(`${value.slice(0,10)}T12:00:00Z`)):(en?"Choose date":"Выбрать дату");
+  const header=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"})
+    .format(new Date(Date.UTC(year,monthIndex,1)));
+  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  return <div className={disabled?"viewingDayField disabled":"viewingDayField"}>
+    <button type="button" className="seasonRangeTrigger" disabled={disabled} aria-expanded={open}
+      onClick={()=>{if(!open)setMonth((value||todayLocal()).slice(0,7));setOpen(prev=>!prev);}}>
+      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty}</span>
+    </button>
+    {open&&!disabled&&<div className="seasonCalendar viewingDayCalendar" role="group" aria-label={label}>
+      <div className="seasonCalendarHead">
+        <button type="button" onClick={()=>navigate(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
+        <strong>{header}</strong>
+        <button type="button" onClick={()=>navigate(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
+      </div>
+      <div className="seasonCalendarGrid">
+        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
+        {cells.map((day,i)=>day?<button key={i} type="button"
+          className={`seasonCalendarDay ${iso(day)===value?"start":""}`}
+          disabled={Boolean(max&&iso(day)>max)} aria-pressed={iso(day)===value}
+          onClick={()=>{onChange(iso(day));setOpen(false);}}>{day}</button>:<span key={i}/>)}
+      </div>
+      <div className="seasonCalendarActions">
+        <button type="button" onClick={()=>{onChange(todayLocal());setOpen(false);}}>{en?"Today":"Сегодня"}</button>
+        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
+      </div>
+    </div>}
+  </div>;
 }
 
 function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
@@ -222,11 +257,11 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     titleEn: "", descriptionEn: "",
     category: "movies",
     releaseYear: "",
-    status: "unwatched",
+    status: "watchlist",
     rating: null,
     lastWatchedAt: "",
     description: "",
-    wantToWatch: false,
+    wantToWatch: true,
   };
   const [form, setForm] = useState(initialMovie ? {
     title: initialMovie.title || "", titleEn: initialMovie.titleEn || "", descriptionEn: initialMovie.descriptionEn || "", category: initialMovie.category,
@@ -255,7 +290,8 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   const selectTmdb = (match) => {
     setForm((current) => ({ ...current, title: match.title || current.title,
       titleEn: match.titleEn || "", description: match.description || "", descriptionEn: match.descriptionEn || "",
-      releaseYear: match.releaseYear || "", category: match.category || current.category }));
+      releaseYear: match.releaseYear || "", category: match.category || current.category,
+      ...(match.category==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
     setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
   };
   const [preview, setPreview] = useState("");
@@ -273,12 +309,18 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   }, [poster]);
 
   const update = (field,value)=>setForm(current=>({...current,[field]:value,
+    ...(field==="category"&&value==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
     ...(field==="status"?{wantToWatch:value==="watchlist",
       rating:value==="watched"?current.rating:null,
       lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):""}:{}),
   }));
   const submit = async (event) => {
     event.preventDefault();
+    if(!form.title.trim()){setError(labels.locale==="en-US"?"Enter a title.":"Укажите название.");return;}
+    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null)){
+      setError(labels.locale==="en-US"?"Choose viewing date and rating.":"Укажите дату просмотра и оценку.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -330,16 +372,18 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
             {!initialMovie && <label>
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
-                {statusOrder.map((item) => <option key={item} value={item}>{labels.catalog[item]}</option>)}
                 <option value="watchlist">{labels.family.watchlist}</option>
+                {form.category!=="series"&&<option value="watched">{labels.catalog.watched}</option>}
               </select>
             </label>}
-            {!initialMovie && <label>
-              <span>{labels.addMovie.watchedAt}</span>
-              <ViewingDateField disabled={form.status !== "watched"} value={form.lastWatchedAt} label={labels.addMovie.watchedAt} onChange={(value) => update("lastWatchedAt", value)} />
-            </label>}
+            {!initialMovie && form.status==="watched" && <div className="addViewingDate">
+              <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
+              <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
+                language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
+                onChange={(value)=>update("lastWatchedAt",value)}/>
+            </div>}
             {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
-              <span>{labels.addMovie.rating}</span>
+              <span>{labels.addMovie.rating} *</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
             <label className="wideField">
@@ -360,7 +404,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </label>
 
           {error && <p className="formError" role="alert">{error}</p>}
-          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim()}>
+          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null))}>
             {submitting ? <span className="spinner small" /> : <Icon name="plus" size={18} />}
             {submitting ? labels.addMovie.submitting : initialMovie ? labels.family.save : labels.addMovie.submit}
           </button>
@@ -1488,7 +1532,7 @@ export default function Home() {
                 : <>
                   <div className="watchRecorder">
                     <h3>{t.family.recordWatch}</h3>
-                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} max={todayLocal()} onChange={setWatchDate} /></label>
+                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} language={language} max={todayLocal()} onChange={setWatchDate} /></label>
                     <div className="watchRatingInput">
                       <span>{language === "en" ? "Rating for this viewing (optional)" : "Оценка этого просмотра (необязательно)"}</span>
                       <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
