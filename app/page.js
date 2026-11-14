@@ -363,6 +363,7 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
   const [finishedAt, setFinishedAt] = useState("");
   const [rating, setRating] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [pendingSeasonDelete, setPendingSeasonDelete] = useState(null);
   const en = language === "en";
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -397,7 +398,6 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     finally {setSaving(false);}
   };
   const remove = async (entryId) => {
-    if (!window.confirm(en ? "Delete this season viewing?" : "Удалить эту запись просмотра сезона?")) return;
     setSaving(true);setError("");
     try {
       const response = await fetch(`/api/movies/${movie.id}/seasons/${entryId}`,{method:"DELETE",credentials:"same-origin"});
@@ -421,10 +421,17 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
             setEditingId(entry.id);setSeasonNumber(entry.seasonNumber);setStartedAt(entry.startedAt);
             setFinishedAt(entry.finishedAt || "");setRating(entry.rating);
           }}>{en ? "Edit" : "Изменить"}</button>
-          <button type="button" disabled={saving} onClick={()=>remove(entry.id)}>{en ? "Delete" : "Удалить"}</button>
+          <button type="button" disabled={saving} onClick={()=>setPendingSeasonDelete(entry.id)}>{en ? "Delete" : "Удалить"}</button>
         </div>
       </li>)}
     </ul>}
+    {pendingSeasonDelete !== null && <div className="seasonDeletePrompt" role="alertdialog" aria-label={en ? "Confirm deletion" : "Подтверждение удаления"}>
+      <strong>{en ? "Delete this season viewing?" : "Удалить запись просмотра сезона?"}</strong>
+      <div className="seasonActions">
+        <button type="button" onClick={()=>setPendingSeasonDelete(null)}>{en ? "Cancel" : "Отмена"}</button>
+        <button type="button" disabled={saving} onClick={async()=>{const id=pendingSeasonDelete;setPendingSeasonDelete(null);await remove(id);}}>{en ? "Delete" : "Удалить"}</button>
+      </div>
+    </div>}
     <form className="seasonForm" onSubmit={submit}>
       <label>{en ? "Season #" : "Номер сезона"}
         <input type="number" min="1" max="200" required value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}/>
