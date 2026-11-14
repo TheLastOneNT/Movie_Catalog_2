@@ -641,3 +641,26 @@ img { display: block; max-width: 100%; }
   .seasonCalendar { box-sizing:border-box; }
   .seasonCalendarDay { height:42px; }
 }
+
+/* Stable add/edit viewport and high-resolution poster preview. */
+.formBackdrop { overflow:hidden; place-items:center; overscroll-behavior:contain; }
+.addMovieModal { min-width:0; max-width:100%; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; animation:none; }
+.addMovieForm,.addMovieFields,.addMovieFields label { min-width:0; max-width:100%; }
+.addMovieFields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.addMovieFields input[type="date"] { width:100%; min-width:0; max-width:100%; box-sizing:border-box; color-scheme:dark; }
+.modalPosterZoom { display:block; position:relative; width:100%; height:100%; margin:0; padding:0; border:0; background:transparent; cursor:zoom-in; }
+.modalPosterZoom img { width:100%; height:100%; object-fit:contain; }
+.posterZoomHint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:#111b; color:#ecd2a5; padding:7px 12px; border-radius:18px; font-size:12px; white-space:nowrap; }
+.posterLightbox { position:fixed; z-index:250; inset:0; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.96); }
+.posterLightboxContent { position:relative; width:min(95vw,950px); height:min(93dvh,1200px); display:grid; place-items:center; }
+.posterLightboxContent img { width:100%; height:100%; object-fit:contain; }
+.posterLightboxClose { position:absolute; z-index:1; right:0; top:0; width:46px; height:46px; border:1px solid #777; border-radius:50%; background:#19181b; color:#fff; font-size:23px; cursor:pointer; }
+@media(max-width:680px) {
+ .formBackdrop { padding:calc(var(--safe-top) + 7px) max(8px,var(--safe-right)) max(8px,var(--safe-bottom)) max(8px,var(--safe-left)); overflow:hidden; place-items:center; }
+ .addMovieModal { width:100%; height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 15px); max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 15px); padding:30px 16px 28px; overflow-x:hidden; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+ .addMovieForm,.addMovieFields { display:flex; flex-direction:column; width:100%; gap:15px; }
+ .addMovieFields > label,.addMovieFields > div { width:100%; min-width:0; max-width:100%; }
+ .addMovieFields input[type="date"] { min-width:0!important; max-width:100%!important; width:100%!important; -webkit-min-logical-width:0; font-size:16px; }
+ .addMovieSubmit { width:100%; }
+ .posterLightbox { padding:8px; }
+}

@@ -79,31 +79,17 @@ function assertSameOrigin(request, url) {
 // Series ratings aggregate the latest *rated* completed viewing of each
 // distinct season. Ratings are not weighted by how often a season was rewatched.
 // Movies keep their existing latest-calendar-date semantics.
+// Ratings are derived exclusively from dated viewing records.
 const EFFECTIVE_RATING_SQL = `(
-  CASE WHEN m.category='series' THEN
-    COALESCE((
-      SELECT ROUND(AVG(latest.rating),1)
-      FROM (
-        SELECT sv.movie_id, sv.rating, ROW_NUMBER() OVER (
-          PARTITION BY sv.movie_id, sv.season_number
-          ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC
-        ) AS recency
-        FROM season_viewings sv
-        WHERE sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
-      ) latest WHERE latest.movie_id=m.id AND latest.recency=1
-    ), (
-      SELECT rc.rating FROM rating_changes rc
-      WHERE rc.movie_id=m.id AND rc.source_type='manual'
-      ORDER BY rc.id DESC LIMIT 1
-    ))
-  ELSE (
-    SELECT rating FROM (
-      SELECT wh.rating AS rating, substr(wh.watched_at,1,10) AS viewed_date,wh.id AS source_id,2 AS priority
-      FROM watch_history wh WHERE wh.movie_id=m.id
-      UNION ALL
-      SELECT rc.rating,'0000-00-00' AS viewed_date,rc.id AS source_id,1 AS priority
-      FROM rating_changes rc WHERE rc.movie_id=m.id AND rc.source_type='manual'
-    ) ORDER BY viewed_date DESC,priority DESC,source_id DESC LIMIT 1
+  CASE WHEN m.category='series' THEN (
+    SELECT ROUND(AVG(latest.rating),1) FROM (
+      SELECT sv.movie_id,sv.rating,ROW_NUMBER() OVER (PARTITION BY sv.movie_id,sv.season_number
+        ORDER BY sv.finished_at DESC,sv.started_at DESC,sv.id DESC) AS recent
+      FROM season_viewings sv WHERE sv.finished_at IS NOT NULL AND sv.rating IS NOT NULL
+    ) latest WHERE latest.movie_id=m.id AND latest.recent=1
+  ) ELSE (
+    SELECT wh.rating FROM watch_history wh WHERE wh.movie_id=m.id
+    ORDER BY substr(wh.watched_at,1,10) DESC,wh.id DESC LIMIT 1
   ) END
 )`;
 function mapMovie(row) {
@@ -239,8 +225,7 @@ async function updateSharedRating(request, env, movieId) {
   }
   const movie = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
   if (!movie) return json({ error: "Movie not found." }, 404);
-  await registerRating(env,movieId,input.rating,"manual");
-  return json({ rating: input.rating });
+  return json({ error: "Ratings are derived from dated viewing history." }, 409);
 }
 
 async function updateProgress(request, env, movieId) {
@@ -497,14 +482,27 @@ async function createMovie(request, env) {
   `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1)).run();
 
   const movieId = Number(insert.meta.last_row_id);
+  if (input.wantToWatch != null && typeof input.wantToWatch !== "boolean")
+    throw new ValidationError("Invalid watchlist flag.");
+  if (input.status !== "watched" && input.rating != null) throw new ValidationError("Unwatched content cannot be rated.");
+  if (input.status === "watched" && input.category !== "series" && !input.lastWatchedAt)
+    throw new ValidationError("A watched movie needs its viewing date.");
   const progressInput = {
     status: input.status === "watched" ? "watched" : "unwatched",
-    rating: input.rating ?? null,
+    rating: input.status === "watched" && input.category !== "series" ? input.rating ?? null : null,
   };
   if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
   const normalized = normalizeProgressPatch(progressInput, {});
   await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
-  if (progressInput.rating != null) await registerRating(env,movieId,progressInput.rating,"manual");
+  if (progressInput.rating != null) {
+    await env.DB.prepare("UPDATE watch_history SET rating=? WHERE movie_id=? AND watched_at=?")
+      .bind(progressInput.rating,movieId,normalized.value.lastWatchedAt).run();
+    await refreshCurrentRating(env,movieId);
+  }
+  if (input.wantToWatch === true) {
+    await env.DB.prepare(`INSERT INTO member_progress(movie_id,member_id,wants_to_watch) VALUES (?,1,1)
+      ON CONFLICT(movie_id,member_id) DO UPDATE SET wants_to_watch=1`).bind(movieId).run();
+  }
   if (posterFromTmdb) await archiveTmdbPoster(env, movieId, posterFromTmdb);
 
   return json({ movie: await getCatalogMovie(env, movieId) }, 201);
@@ -701,15 +699,10 @@ function validateViewingDay(value) {
   return value;
 }
 async function refreshCurrentRating(env,movieId) {
-  // Keep stored progress consistent with the derived catalogue rating. This
-  // runs when either a watch, season, or manual rating is modified.
-  const row = await env.DB.prepare(`SELECT ${EFFECTIVE_RATING_SQL} AS rating
-    FROM movies m WHERE m.id=?`).bind(movieId).first();
-  const rating = row?.rating ?? null;
-  await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at)
-    VALUES (?,'unwatched',?,?)
+  const result=await env.DB.prepare(`SELECT ${EFFECTIVE_RATING_SQL} AS rating FROM movies m WHERE m.id=?`).bind(movieId).first();
+  await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at) VALUES (?,'unwatched',?,?)
     ON CONFLICT(movie_id) DO UPDATE SET rating=excluded.rating,updated_at=excluded.updated_at`)
-    .bind(movieId,rating,new Date().toISOString()).run();
+    .bind(movieId,result?.rating??null,new Date().toISOString()).run();
 }
 async function registerRating(env,movieId,rating,sourceType,sourceId=null) {
   if (!["watch","season","manual"].includes(sourceType)) throw new ValidationError("Unknown rating source.");
