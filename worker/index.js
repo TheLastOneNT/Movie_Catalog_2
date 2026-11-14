@@ -301,7 +301,6 @@ async function searchTmdb(url, env) {
 
   // A direct TMDB ID disambiguates very short titles, e.g. Home (2009) = tmdb:62320.
   const directId = query.match(/^tmdb:(\d{1,9})$/i);
-  let matches;
   if (directId) {
     const id = Number(directId[1]);
     const data = await tmdbDetails(env, "movie", id);
