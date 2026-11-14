@@ -74,6 +74,20 @@ function assertSameOrigin(request, url) {
   if (origin && origin !== url.origin) throw new Response("Forbidden", { status: 403 });
 }
 
+// Derive the visible rating at read time, so older ratings entered in a
+// different order are corrected immediately after deployment (no DB migration).
+const EFFECTIVE_RATING_SQL = `(
+  SELECT rating FROM (
+    SELECT wh.rating AS rating, substr(wh.watched_at,1,10) AS viewed_date, wh.id AS source_id, 2 AS priority
+      FROM watch_history wh WHERE wh.movie_id=m.id
+    UNION ALL
+    SELECT sv.rating AS rating, sv.finished_at AS viewed_date, sv.id AS source_id, 2 AS priority
+      FROM season_viewings sv WHERE sv.movie_id=m.id AND sv.finished_at IS NOT NULL
+    UNION ALL
+    SELECT rc.rating AS rating, '0000-00-00' AS viewed_date, rc.id AS source_id, 1 AS priority
+      FROM rating_changes rc WHERE rc.movie_id=m.id AND rc.source_type='manual'
+  ) ORDER BY viewed_date DESC, priority DESC, source_id DESC LIMIT 1
+)`;
 function mapMovie(row) {
   return {
     id: row.id,
@@ -87,7 +101,7 @@ function mapMovie(row) {
     collectionOrder: row.collection_order,
     progress: {
       status: row.status === "watched" ? "watched" : "unwatched",
-      rating: row.rating,
+      rating: Object.prototype.hasOwnProperty.call(row, "effective_rating") ? row.effective_rating : row.rating,
       isFavorite: Boolean(row.is_favorite),
       lastWatchedAt: row.last_watched_at,
       watchCount: row.watch_count || 0,
@@ -121,7 +135,7 @@ async function listCatalog(env) {
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
       m.poster_path, m.release_year, m.collection_order,
-      p.status, p.rating, p.is_favorite, p.last_watched_at, p.watch_count,
+      p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
     LEFT JOIN movie_progress p ON p.movie_id = m.id
@@ -145,7 +159,7 @@ async function getCatalogMovie(env, movieId) {
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
       m.poster_path, m.release_year, m.collection_order,
-      p.status, p.rating, p.is_favorite, p.last_watched_at, p.watch_count,
+      p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
     LEFT JOIN movie_progress p ON p.movie_id = m.id
