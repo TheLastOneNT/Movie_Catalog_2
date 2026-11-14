@@ -156,6 +156,9 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, me
       <div className="posterFrame">
         <button type="button" className="posterOpen" onClick={() => onOpen(movie.id)} aria-label={labels.catalog.details + ": " + title}><img src={movie.poster} alt="" loading="lazy" decoding="async" /></button>
         <span className="categoryBadge">{labels.categories[movie.category]}</span>
+        <div className="posterShade" />
+      </div>
+      <div className="cardQuickActions" aria-label="Действия с фильмом">
         <button
           type="button"
           className={personal.isFavorite ? "favoriteButton active" : "favoriteButton"}
@@ -178,7 +181,6 @@ function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, me
         >
           <Icon name={watched ? "check" : "calendar"} size={watched ? 17 : 16} />
         </button>
-        <div className="posterShade" />
       </div>
       <div className="movieMeta">
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
@@ -411,6 +413,7 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyDates, setHistoryDates] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const requestQueue = useRef(Promise.resolve());
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
@@ -631,7 +634,6 @@ export default function Home() {
   };
 
   const removeWatch = async (eventId) => {
-    if (!window.confirm(t.family.confirmRemoveWatch)) return;
     const response = await fetch(`/api/movies/${selectedId}/watches/${eventId}`, {
       method: "DELETE", credentials: "same-origin",
     });
@@ -662,7 +664,6 @@ export default function Home() {
   };
 
   const removeMovie = async (movieId) => {
-    if (!window.confirm(t.family.confirmRemoveMovie)) return;
     const response = await fetch(`/api/movies/${movieId}`, {
       method: "DELETE", credentials: "same-origin",
     });
@@ -1121,7 +1122,7 @@ export default function Home() {
                     <ul>{historyEvents.map((event) => <li key={event.id} className="watchEvent">
                     <div><strong>{new Intl.DateTimeFormat(t.locale, { day: "numeric", month: "long", year: "numeric" }).format(new Date(event.watchedAt))}</strong>
 </div>
-                    <button type="button" onClick={() => removeWatch(event.id)} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
+                    <button type="button" onClick={() => setConfirmDelete({ kind: "watch", id: event.id })} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
                   </li>)}</ul>
                   ) : <p>{t.modal.historyEmpty}</p>}
                 </div>
@@ -1135,7 +1136,7 @@ export default function Home() {
               <div className="modalActions">
                 <button type="button" className="saveNote" disabled={noteDraft === personal(selected).notes} onClick={() => updateMember(selected.id, { notes: noteDraft })}>{t.modal.saveNotes}</button>
                 <button type="button" className="resetMovie" onClick={() => { setEditingMovie(selected); setSelectedId(null); }}>{t.family.editMovie}</button>
-                <button type="button" className="resetMovie" onClick={() => removeMovie(selected.id)}>{t.family.deleteMovie}</button>
+                <button type="button" className="resetMovie" onClick={() => setConfirmDelete({ kind: "movie", id: selected.id })}>{t.family.deleteMovie}</button>
               </div>
             </div>
           </section>
@@ -1150,6 +1151,24 @@ export default function Home() {
               <Icon name="arrowRight" size={24} />
             </button>
           )}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="confirmBackdrop" role="presentation" onMouseDown={() => setConfirmDelete(null)}>
+          <section className="confirmDialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmDeleteTitle" aria-describedby="confirmDeleteText" onMouseDown={(event) => event.stopPropagation()}>
+            <h2 id="confirmDeleteTitle">{confirmDelete.kind === "watch" ? "Удалить просмотр?" : "Удалить фильм?"}</h2>
+            <p id="confirmDeleteText">{confirmDelete.kind === "watch" ? "Дата просмотра будет удалена из истории." : "Фильм и связанная с ним история будут удалены без возможности восстановления."}</p>
+            <div className="confirmDialogActions">
+              <button type="button" className="confirmCancel" autoFocus onClick={() => setConfirmDelete(null)}>Отмена</button>
+              <button type="button" className="confirmDanger" onClick={async () => {
+                const target = confirmDelete;
+                setConfirmDelete(null);
+                if (target.kind === "watch") await removeWatch(target.id);
+                else await removeMovie(target.id);
+              }}>Удалить</button>
+            </div>
+          </section>
         </div>
       )}
 
