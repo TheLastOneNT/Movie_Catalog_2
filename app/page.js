@@ -146,37 +146,6 @@ function todayLocal() {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
-function ProfileSettings({ profiles, labels, onClose, onSave }) {
-  const [names, setNames] = useState(Object.fromEntries(profiles.map((person) => [person.id, person.name])));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const submit = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    try { await onSave(names); onClose(); }
-    catch (err) { setError(err.message || labels.sync.error); setSaving(false); }
-  };
-  return (
-    <div className="modalBackdrop formBackdrop" role="presentation" onMouseDown={onClose}>
-      <section className="profileSettings" role="dialog" aria-modal="true" aria-label={labels.family.profiles} onMouseDown={(event) => event.stopPropagation()}>
-        <button type="button" className="modalClose" onClick={onClose} aria-label={labels.modal.close}><Icon name="close" size={20} /></button>
-        <span className="sectionKicker">{labels.family.family}</span>
-        <h2>{labels.family.profiles}</h2>
-        <p>{labels.family.profileHint}</p>
-        <form onSubmit={submit}>
-          {profiles.map((person) => (
-            <label key={person.id}><span>{labels.family.member} {person.id}</span>
-              <input required maxLength={32} value={names[person.id] || ""} onChange={(event) => setNames((current) => ({ ...current, [person.id]: event.target.value }))} />
-            </label>
-          ))}
-          {error && <p className="formError" role="alert">{error}</p>}
-          <button className="primaryButton" type="submit" disabled={saving}>{saving ? labels.sync.saving : labels.family.save}</button>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function MovieCard({ movie, language, labels, onOpen, onUpdate, onRate, view, memberId }) {
   const watched = movie.progress.status === "watched";
   const personal = personalFor(movie, memberId);
@@ -419,11 +388,11 @@ export default function Home() {
   const [accessPromptOpen, setAccessPromptOpen] = useState(false);
   const [movies, setMovies] = useState([]);
   const [profiles, setProfiles] = useState([{ id: 1, name: "Участник 1" }, { id: 2, name: "Участник 2" }]);
-  const [activeMember, setActiveMember] = useState(1);
-  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const activeMember = 1; // Shared household preference record.
+
   const [editingMovie, setEditingMovie] = useState(null);
   const [watchDate, setWatchDate] = useState(todayLocal);
-  const [watchViewers, setWatchViewers] = useState([1, 2]);
+  const watchViewers = [1, 2]; // All logged views belong to the household.
   const [watchSubmitting, setWatchSubmitting] = useState(false);
   const [historyEvents, setHistoryEvents] = useState([]);
   const [category, setCategory] = useState("all");
@@ -446,7 +415,7 @@ export default function Home() {
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
   const t = translations[language];
-  const activeName = profiles.find((person) => person.id === activeMember)?.name || "";
+
   const personal = (movie) => personalFor(movie, activeMember);
 
   const loadProfiles = useCallback(async () => {
@@ -489,8 +458,7 @@ export default function Home() {
   useEffect(() => {
     setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
     const savedLanguage = window.localStorage.getItem("movie-catalog-language");
-    const savedMember = Number(window.localStorage.getItem("movie-catalog-member"));
-    if (savedMember === 1 || savedMember === 2) setActiveMember(savedMember);
+    window.localStorage.removeItem("movie-catalog-member");
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     setLanguage("ru");
     document.documentElement.lang = "ru";
@@ -529,11 +497,11 @@ export default function Home() {
     setHistoryDates([]);
     setHistoryEvents([]);
     setWatchDate(todayLocal());
-    setWatchViewers([1, 2]);
-  }, [selectedId, activeMember]);
+
+  }, [selectedId]);
 
   useEffect(() => {
-    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen || profileSettingsOpen;
+    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen;
     document.body.style.overflow = overlayOpen ? "hidden" : "";
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
@@ -543,7 +511,7 @@ export default function Home() {
         setAccessPromptOpen(false);
         setAddMovieOpen(false);
         setInstallGuideOpen(false);
-        setProfileSettingsOpen(false);
+
         pendingAction.current = null;
       }
     };
@@ -552,7 +520,7 @@ export default function Home() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, profileSettingsOpen]);
+  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId]);
 
   const unlock = async (accessKey) => {
     try {
@@ -642,21 +610,8 @@ export default function Home() {
     });
   };
 
-  const saveProfiles = async (names) => {
-    for (const profile of profiles) {
-      if (profile.name === names[profile.id].trim()) continue;
-      const response = await fetch(`/api/profiles/${profile.id}`, {
-        method: "PUT", credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: names[profile.id].trim() }),
-      });
-      if (!response.ok) throw new Error(t.sync.error);
-    }
-    await loadProfiles();
-  };
-
   const recordWatch = async () => {
-    if (!selectedId || watchViewers.length === 0 || watchSubmitting || syncState === "offline") return;
+    if (!selectedId || watchSubmitting || syncState === "offline") return;
     setWatchSubmitting(true);
     try {
       const response = await fetch(`/api/movies/${selectedId}/watches`, {
@@ -914,9 +869,7 @@ export default function Home() {
       if (status === "rated" && !movie.progress.rating) return false;
       if (status === "favorites" && !personalFor(movie, activeMember).isFavorite) return false;
       if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
-      if (status === "rewatch" && (movie.progress.status !== "watched" || !(profiles.some((person) => {
-        const own = personalFor(movie, person.id); return own.isFavorite;
-      }) || (movie.progress.rating || 0) >= 4 || movie.progress.isFavorite))) return false;
+      if (status === "rewatch" && (movie.progress.status !== "watched" || !(personalFor(movie, 1).isFavorite || (movie.progress.rating || 0) >= 4 || movie.progress.isFavorite))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
@@ -927,7 +880,7 @@ export default function Home() {
     if (sort === "recent") result = [...result].sort((a, b) => (b.progress.lastWatchedAt || "").localeCompare(a.progress.lastWatchedAt || ""));
     if (sort === "oldest") result = sortOldestWatched(result);
     return result;
-  }, [category, movies, query, shuffleSeed, sort, status, t.locale, activeMember, profiles]);
+  }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const favoriteCount = movies.filter((movie) => personalFor(movie, activeMember).isFavorite).length;
@@ -1006,19 +959,12 @@ export default function Home() {
           ))}
         </nav>
         <div className="headerActions">
-          <button type="button" className="profileChip" onClick={() => setProfileSettingsOpen(true)} title={t.family.profiles} aria-label={t.family.profiles}><Icon name="heart" size={15} /></button>
-          <select className="memberSwitch" aria-label={t.family.active} value={activeMember} onChange={(event) => {
-            const id = Number(event.target.value); setActiveMember(id); window.localStorage.setItem("movie-catalog-member", String(id));
-          }}>{profiles.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select>
           <span className={`syncBadge ${syncState}`} aria-live="polite">
             <Icon name="cloud" size={15} />
             {t.sync[syncState] || t.sync.synced}
           </span>
           <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
             <Icon name="plus" size={18} /><span>{t.nav.add}</span>
-          </button>
-          <button type="button" className="randomHeader" onClick={chooseRandom} aria-label={t.nav.random}>
-            <Icon name="shuffle" size={18} /><span>{t.nav.random}</span>
           </button>
         </div>
       </header>
@@ -1103,7 +1049,6 @@ export default function Home() {
         <p>{movies.length} {t.footer.description}<span className="tmdbCredits"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg" alt="TMDB" /></a><small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small></span></p>
         <div className="footerActions">
           <button type="button" onClick={() => setInstallGuideOpen(true)}><Icon name="share" size={17} /> {t.footer.homeScreen}</button>
-          <button type="button" onClick={() => setProfileSettingsOpen(true)}><Icon name="heart" size={17} /> {t.family.profiles}</button>
           <button type="button" onClick={exportBackup}><Icon name="download" size={17} /> {t.footer.export}</button>
           <button type="button" onClick={() => restoreInputRef.current?.click()}><Icon name="upload" size={17} /> {t.family.restore}</button>
           <input ref={restoreInputRef} className="visuallyHidden" type="file" accept=".json,application/json" onChange={async (event) => {
@@ -1148,7 +1093,7 @@ export default function Home() {
                 {personal(selected).isFavorite ? t.modal.favorite : t.modal.addFavorite}
               </button>
 
-              <div className="familyRatings"><span>{t.modal.rating} · общая для семьи</span>
+              <div className="familyRatings"><span>{t.modal.rating}</span>
                 <Stars value={selected.progress.rating || 0} onChange={(rating) => updateSharedRating(selected.id, rating)} label={t.modal.rating} />
               </div>
               <button type="button" className={personal(selected).wantsToWatch ? "watchlistButton active" : "watchlistButton"} onClick={() => updateMember(selected.id, { wantsToWatch: !personal(selected).wantsToWatch })}>{personal(selected).wantsToWatch ? t.family.inWatchlist : t.family.addWatchlist}</button>
@@ -1156,10 +1101,8 @@ export default function Home() {
               <div className="watchRecorder">
                 <h3>{t.family.recordWatch}</h3>
                 <label className="watchDate"><span>{t.modal.date}</span><input type="date" value={watchDate} max={todayLocal()} onChange={(event) => setWatchDate(event.target.value)} /></label>
-                <div className="watchAttendance" aria-label={t.family.whoWatched}>
-                  {profiles.map((person) => <label key={person.id}><input type="checkbox" checked={watchViewers.includes(person.id)} onChange={(event) => setWatchViewers((current) => event.target.checked ? [...current, person.id] : current.filter((id) => id !== person.id))} />{person.name}</label>)}
-                </div>
-                <button className="primaryButton recordButton" type="button" onClick={recordWatch} disabled={watchSubmitting || !watchViewers.length || syncState === "offline"}>{watchSubmitting ? t.sync.saving : t.family.recordWatch}</button>
+
+                <button className="primaryButton recordButton" type="button" onClick={recordWatch} disabled={watchSubmitting || syncState === "offline"}>{watchSubmitting ? t.sync.saving : t.family.recordWatch}</button>
               </div>
 
               <div className="watchCount">
@@ -1177,7 +1120,7 @@ export default function Home() {
                   {historyLoading ? <p>{t.modal.historyLoading}</p> : historyDates.length ? (
                     <ul>{historyEvents.map((event) => <li key={event.id} className="watchEvent">
                     <div><strong>{new Intl.DateTimeFormat(t.locale, { day: "numeric", month: "long", year: "numeric" }).format(new Date(event.watchedAt))}</strong>
-                    <span>{event.viewers.length ? event.viewers.map((id) => profiles.find((person) => person.id === id)?.name).filter(Boolean).join(" + ") : t.family.legacyWatch}</span></div>
+</div>
                     <button type="button" onClick={() => removeWatch(event.id)} aria-label={t.family.removeWatch}>{t.family.removeWatch}</button>
                   </li>)}</ul>
                   ) : <p>{t.modal.historyEmpty}</p>}
@@ -1186,7 +1129,7 @@ export default function Home() {
 
               {selected.progress.notes && <p className="legacyNotes">{t.family.legacyNotes}: {selected.progress.notes}</p>}
               <label className="notesField">
-                <span>{t.modal.notes} — {activeName}</span>
+                <span>{t.modal.notes}</span>
                 <textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder={t.modal.notesPlaceholder} />
               </label>
               <div className="modalActions">
@@ -1223,7 +1166,6 @@ export default function Home() {
       {(addMovieOpen || editingMovie) && (
         <AddMovieModal labels={t} initialMovie={editingMovie} onClose={() => { setAddMovieOpen(false); setEditingMovie(null); }} onCreate={editingMovie ? saveEditedMovie : createMovie} />
       )}
-      {profileSettingsOpen && <ProfileSettings profiles={profiles} labels={t} onClose={() => setProfileSettingsOpen(false)} onSave={saveProfiles} />}
 
       {installGuideOpen && <InstallGuide labels={t} onClose={() => setInstallGuideOpen(false)} />}
     </main>
