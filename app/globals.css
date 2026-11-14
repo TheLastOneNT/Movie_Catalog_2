@@ -567,3 +567,7 @@ img { display: block; max-width: 100%; }
   .posterReviewLabels small,.posterReviewLabels em { font-size: 10px; }
   .localeSwitch button { padding: 7px 6px; }
 }
+
+/* Provide a helpful prompt for precise year-constrained TMDB searches. */
+.tmdbSearchHint { display: block; padding: 7px 0; color: #aaa6a5; line-height: 1.45; font-size: 12px; }
+.posterUpload img { object-fit: contain; }

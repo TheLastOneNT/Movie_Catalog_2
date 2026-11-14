@@ -229,7 +229,9 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     if (form.title.trim().length < 2) return;
     setTmdbLoading(true); setTmdbError("");
     try {
-      const response = await fetch(`/api/tmdb/search?q=${encodeURIComponent(form.title.trim())}`);
+      const params = new URLSearchParams({ q: form.title.trim() });
+      if (form.releaseYear) params.set("year", String(form.releaseYear));
+      const response = await fetch(`/api/tmdb/search?${params.toString()}`);
       const data = await response.json();
       if (!response.ok) throw new Error(labels.family.tmdbUnavailable);
       setTmdbMatches(data.results || []);
@@ -286,10 +288,11 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <input required maxLength={160} value={form.title} onChange={(event) => update("title", event.target.value)} placeholder={labels.addMovie.namePlaceholder} autoFocus />
             </label>
             {!initialMovie && <div className="tmdbSearch wideField">
+              <small className="tmdbSearchHint">{labels.locale === "en-US" ? "Optional year narrows results. If nothing is found, try the original title or tmdb:62320 (TMDB ID)." : "Укажи год выпуска для точного поиска. Можно искать по оригинальному названию или по ID, например tmdb:62320."}</small>
               <button type="button" onClick={searchOnTmdb} disabled={tmdbLoading || form.title.trim().length < 2}>{tmdbLoading ? labels.sync.saving : labels.family.tmdbSearch}</button>
               {tmdbError && <small role="status">{tmdbError}</small>}
               {!!tmdbMatches.length && <div className="tmdbMatches">{tmdbMatches.map((match) => <button type="button" key={match.id + ":" + match.category} onClick={() => selectTmdb(match)}>
-                {match.posterUrl && <img src={match.posterUrl} alt="" loading="lazy" />}
+                <img src={match.posterUrl || "/poster-placeholder.svg"} alt="" loading="lazy" />
                 <span>{match.title}<small>{match.releaseYear || ""}</small></span>
               </button>)}</div>}
             </div>}
@@ -332,7 +335,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </div>
 
           <label className={preview ? "posterUpload hasPreview" : "posterUpload"}>
-            {preview || tmdbPoster ? <img src={preview || tmdbPoster} alt="" /> : <Icon name="upload" size={28} />}
+            <img src={preview || tmdbPoster || "/poster-placeholder.svg"} alt="" />
             <strong>{labels.addMovie.choosePoster}</strong>
             <small>{labels.addMovie.posterHint}</small>
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setPoster(event.target.files?.[0] || null)} />
@@ -436,7 +439,7 @@ function PosterReviewPanel({ language, movies, onClose, onApplied }) {
         return <label className="posterReviewItem" key={entry.movieId}>
           <input type="checkbox" disabled={!entry.match || applying} checked={selected.includes(entry.movieId)}
             onChange={(event) => setSelected((current) => event.target.checked ? [...current, entry.movieId] : current.filter((id) => id !== entry.movieId))} />
-          <img src={existing?.poster || "/film-reel.png"} alt="" className="posterReviewBefore" />
+          <img src={existing?.poster || "/poster-placeholder.svg"} alt="" className="posterReviewBefore" />
           {entry.match?.posterUrl ? <img src={entry.match.posterUrl} alt="" className="posterReviewAfter" /> : <div className="posterReviewMissing">—</div>}
           <span className="posterReviewLabels">
             <strong>{entry.movieTitle}</strong>
