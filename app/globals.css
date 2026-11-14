@@ -664,3 +664,12 @@ img { display: block; max-width: 100%; }
  .addMovieSubmit { width:100%; }
  .posterLightbox { padding:8px; }
 }
+
+/* A fixed-size date field retains the native browser calendar and never stretches its grid. */
+.viewingDateField { position:relative; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-width:0; max-width:100%; height:48px; padding:0 12px; box-sizing:border-box; border:1px solid var(--line); background:#141318; color:#e9e2dc; border-radius:6px; overflow:hidden; }
+.viewingDateFieldText { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:14px; }
+.viewingDateField svg { color:#d1b275; flex:0 0 auto; pointer-events:none; }
+.viewingDateField input[type="date"] { position:absolute; inset:0; width:100%; height:100%; min-width:0; max-width:100%; border:0; margin:0; padding:0; opacity:.015; cursor:pointer; z-index:1; -webkit-appearance:none; appearance:none; }
+.viewingDateField input[type="date"]::-webkit-calendar-picker-indicator { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.viewingDateField.disabled { opacity:.4; }
+.viewingDateField:focus-within { outline:2px solid var(--gold-bright); outline-offset:1px; }

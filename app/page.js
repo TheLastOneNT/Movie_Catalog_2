@@ -204,6 +204,18 @@ async function optimizePoster(file) {
   }
 }
 
+function ViewingDateField({value,onChange,label,disabled=false,max}) {
+  const locale = label && /date|watched|view/i.test(label) ? "en-US" : "ru-RU";
+  const dateText=value ? new Intl.DateTimeFormat(locale,{
+    year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
+  }).format(new Date(`${value.slice(0,10)}T12:00:00Z`)) : "—";
+  return <span className={disabled?"viewingDateField disabled":"viewingDateField"}>
+    <span className="viewingDateFieldText">{dateText}</span><Icon name="calendar" size={18}/>
+    <input type="date" aria-label={label} value={value} disabled={disabled} max={max}
+      onChange={(event)=>onChange(event.target.value)}/>
+  </span>;
+}
+
 function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   const initialForm = {
     title: "",
@@ -324,7 +336,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
             </label>}
             {!initialMovie && <label>
               <span>{labels.addMovie.watchedAt}</span>
-              <input type="date" disabled={form.status !== "watched"} value={form.lastWatchedAt} onChange={(event) => update("lastWatchedAt", event.target.value)} />
+              <ViewingDateField disabled={form.status !== "watched"} value={form.lastWatchedAt} label={labels.addMovie.watchedAt} onChange={(value) => update("lastWatchedAt", value)} />
             </label>}
             {!initialMovie && form.status === "watched" && <div className="addRating wideField">
               <span>{labels.addMovie.rating}</span>
@@ -1418,7 +1430,7 @@ export default function Home() {
                 : <>
                   <div className="watchRecorder">
                     <h3>{t.family.recordWatch}</h3>
-                    <label className="watchDate"><span>{t.modal.date}</span><input type="date" value={watchDate} max={todayLocal()} onChange={(event) => setWatchDate(event.target.value)} /></label>
+                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} max={todayLocal()} onChange={setWatchDate} /></label>
                     <div className="watchRatingInput">
                       <span>{language === "en" ? "Rating for this viewing (optional)" : "Оценка этого просмотра (необязательно)"}</span>
                       <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
