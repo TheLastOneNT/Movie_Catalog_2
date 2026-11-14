@@ -776,12 +776,27 @@ async function closeSeriesCycle(request,env,movieId,cycleId) {
     WHERE cycle_id=? AND movie_id=? AND rating IS NOT NULL AND finished_at IS NOT NULL`)
     .bind(cycleId,movieId).first();
   if(!Number(existing?.rated))return json({error:"Rate at least one finished season before closing this cycle."},422);
+  if(input.outcome==="completed") {
+    const unfinished=await env.DB.prepare(`SELECT COUNT(*) AS total FROM season_viewings
+      WHERE cycle_id=? AND movie_id=? AND finished_at IS NULL`).bind(cycleId,movieId).first();
+    if(Number(unfinished?.total))return json({error:"Finish or remove unfinished seasons, or choose Stopped watching."},422);
+  }
   // The cycle's calendar date is based on its actual last completed season, not
   // on when the user pressed "Done", so backdated cycles sort correctly.
   await env.DB.prepare(`UPDATE series_cycles SET outcome=?,ended_at=? WHERE id=? AND movie_id=?`)
     .bind(input.outcome,existing.latest,cycleId,movieId).run();
   await refreshCurrentRating(env,movieId);
   await refreshViewingSummary(env,movieId);
+  return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)});
+}
+async function cancelEmptySeriesCycle(env,movieId,cycleId) {
+  const current=await env.DB.prepare(`SELECT id FROM series_cycles WHERE id=? AND movie_id=?
+    AND outcome='watching'`).bind(cycleId,movieId).first();
+  if(!current)return json({error:"Active cycle not found."},404);
+  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM season_viewings WHERE cycle_id=?")
+    .bind(cycleId).first();
+  if(Number(count.total))return json({error:"Delete season entries before cancelling the cycle."},409);
+  await env.DB.prepare("DELETE FROM series_cycles WHERE id=?").bind(cycleId).run();
   return json({cycles:await listSeriesCycles(env,movieId),movie:await getCatalogMovie(env,movieId)});
 }
 async function saveSeasonViewing(request,env,movieId) {
@@ -1129,6 +1144,9 @@ async function handleApi(request, env) {
   const cyclesMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/cycles$/);
   if(cyclesMatch&&request.method==="GET")return json({cycles:await listSeriesCycles(env,Number(cyclesMatch[1]))});
   if(cyclesMatch&&request.method==="POST")return createSeriesCycle(env,Number(cyclesMatch[1]));
+  const cancelCycleMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/cycles\/(\d+)$/);
+  if(cancelCycleMatch&&request.method==="DELETE")
+    return cancelEmptySeriesCycle(env,Number(cancelCycleMatch[1]),Number(cancelCycleMatch[2]));
   const closeCycleMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/cycles\/(\d+)\/close$/);
   if(closeCycleMatch&&request.method==="POST")
     return closeSeriesCycle(request,env,Number(closeCycleMatch[1]),Number(closeCycleMatch[2]));
