@@ -293,33 +293,63 @@ async function tmdbDetails(env, mediaType, id) {
 }
 async function searchTmdb(url, env) {
   if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
-  const query = url.searchParams.get("q")?.trim() || "";
+  const query = (url.searchParams.get("q") || "").trim();
+  const yearText = (url.searchParams.get("year") || "").trim();
+  const year = yearText ? Number(yearText) : null;
+  if (yearText && (!Number.isInteger(year) || year < 1888 || year > 2200)) throw new ValidationError("Invalid search year.");
   if (query.length < 2 || query.length > 100) throw new ValidationError("Search must be 2–100 characters.");
-  const payload = await tmdbGet(env, "search/multi", { query, language: "ru-RU", include_adult: "false" });
-  const matches = (payload.results || []).filter((item) => item.media_type === "movie" || item.media_type === "tv").slice(0, 8);
+
+  // A direct TMDB ID disambiguates very short titles, e.g. Home (2009) = tmdb:62320.
+  const directId = query.match(/^tmdb:(\d{1,9})$/i);
+  if (directId) {
+    const id = Number(directId[1]);
+    const data = await tmdbDetails(env, "movie", id);
+    return json({ results: [{
+      id, category: data.genreIds.includes(16) ? "cartoons" : data.genreIds.includes(99) ? "documentaries" : "movies",
+      ...data,
+    }] });
+  }
+
+  // Search the two media types separately so that movies are not crowded out by
+  // person and TV matches in /search/multi, and use the year filter when supplied.
+  const [movieResults, tvResults] = await Promise.all([
+    tmdbGet(env, "search/movie", {
+      query, language: "ru-RU", include_adult: "false", ...(year ? { year } : {}),
+    }),
+    tmdbGet(env, "search/tv", {
+      query, language: "ru-RU", include_adult: "false", ...(year ? { first_air_date_year: year } : {}),
+    }),
+  ]);
+  const candidates = [
+    ...(movieResults.results || []).slice(0, 10).map(item => ({...item,media_type:"movie"})),
+    ...(tvResults.results || []).slice(0, 6).map(item => ({...item,media_type:"tv"})),
+  ];
+  const resultYear = (item) => Number((item.release_date || item.first_air_date || "").slice(0,4)) || null;
+  candidates.sort((a,b) => {
+    if (year) return Number(resultYear(b) === year) - Number(resultYear(a) === year)
+      || (b.popularity || 0) - (a.popularity || 0);
+    return (b.popularity || 0) - (a.popularity || 0);
+  });
+  const matches = candidates.slice(0, 12);
   const results = await Promise.all(matches.map(async (item) => {
     try {
-      const details = await tmdbDetails(env, item.media_type, item.id);
+      const details = await tmdbDetails(env,item.media_type,item.id);
       return {
-        id: item.id,
-        category: item.media_type === "tv" ? "series" : details.genreIds.includes(16) ? "cartoons" : details.genreIds.includes(99) ? "documentaries" : "movies",
-        ...details,
-        title: details.title || item.title || item.name || "",
-        posterUrl: details.posterUrl || null,
+        id:item.id, category:item.media_type === "tv" ? "series" :
+          details.genreIds.includes(16) ? "cartoons" : details.genreIds.includes(99) ? "documentaries" : "movies",
+        ...details, title:details.title || item.title || item.name || "",
       };
     } catch {
       return {
-        id: item.id, mediaType: item.media_type,
-        category: item.media_type === "tv" ? "series" : "movies",
-        title: item.title || item.name || "",
-        titleEn: "", description: "", descriptionEn: "",
-        releaseYear: Number((item.release_date || item.first_air_date || "").slice(0, 4)) || null,
-        posterUrl: null,
+        id:item.id, mediaType:item.media_type, category:item.media_type === "tv" ? "series" : "movies",
+        title:item.title || item.name || "", titleEn:"", description:"", descriptionEn:"",
+        releaseYear:resultYear(item), posterUrl:null,
       };
     }
   }));
   return json({ results });
 }
+
 async function tmdbSuggestions(url, env) {
   if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
   const offset = Number(url.searchParams.get("offset") || 0);
@@ -436,7 +466,7 @@ async function createMovie(request, env) {
       category, title_ru, title_en, description_ru, description_en,
       poster_path, release_year, collection_order
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/film-reel.png", releaseYear, Number(nextOrder?.value || 1)).run();
+  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1)).run();
 
   const movieId = Number(insert.meta.last_row_id);
   const progressInput = {
