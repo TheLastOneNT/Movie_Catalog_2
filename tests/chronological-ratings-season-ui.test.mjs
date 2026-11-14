@@ -17,7 +17,7 @@ test("films keep chronological latest viewing ratings",()=>{
 test("series average each season's most recent rated completed viewing",()=>{
   const sql=worker.slice(worker.indexOf("const EFFECTIVE_RATING_SQL"),worker.indexOf("function mapMovie("));
   assert.match(sql,/CASE WHEN m\.category='series' THEN/);
-  assert.match(sql,/ROUND\(AVG\(latest\.rating\),2\)/);
+  assert.match(sql,/ROUND\(AVG\(latest\.rating\),1\)/);
   assert.match(sql,/PARTITION BY sv\.movie_id, sv\.season_number/);
   assert.match(sql,/latest\.movie_id=m\.id AND latest\.recency=1/);
 });
