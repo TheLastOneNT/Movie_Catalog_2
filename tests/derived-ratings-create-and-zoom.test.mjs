@@ -28,7 +28,7 @@ test("poster enlarges inside authenticated detail modal",()=>{
 });
 test("create modal and both date fields use stable viewport layout",()=>{
   assert.match(p,/function ViewingDateField/);
-  assert.match(p,/className="viewingDateFieldText"/);
-  assert.match(c,/\.viewingDateField input\[type="date"\] \{ position:absolute;/);
+  assert.match(p,/className="seasonCalendar viewingDayCalendar"/);
+  assert.match(c,/\.viewingDayField,.addViewingDate \{ width:100%/);
   assert.match(c,/\.addMovieModal \{ width:100%; height:calc\(100dvh/);
 });

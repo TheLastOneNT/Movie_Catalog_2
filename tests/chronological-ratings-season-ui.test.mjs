@@ -24,7 +24,7 @@ test("series average each season's most recent rated completed viewing",()=>{
 });
 
 test("season viewings are listed by dates rather than season number",()=>{
-  assert.match(worker,/ORDER BY COALESCE\(finished_at,started_at\) DESC, started_at DESC, id DESC/);
+  assert.match(worker,/ORDER BY COALESCE\(finished_at,started_at\) DESC,started_at DESC,id DESC/);
 });
 test("watch history shows date and compact editable rating in same row",()=>{
   assert.equal((page.match(/className="watchEventLine"/g)||[]).length,2);

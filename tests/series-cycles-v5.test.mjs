@@ -28,7 +28,7 @@ test("server requires explicit cycle closure for headline rating",()=>{
  assert.match(server,/sc.outcome IN \('completed','stopped'\)/);
  assert.match(server,/async function closeSeriesCycle/);
  assert.match(server,/input.outcome/);
- assert.match(server,/ratedSeasons/);
+ assert.match(server,/Number\(existing\?\.rated\)/);
 });
 test("migration preserves old seasons under a single labelled legacy cycle",()=>{
  assert.match(migration,/CREATE TABLE series_cycles/);
