@@ -556,12 +556,16 @@ async function exportData(env) {
   const [catalog, history] = await Promise.all([
     listCatalog(env),
     env.DB.prepare(
-      "SELECT id, movie_id AS movieId, watched_at AS watchedAt, created_at AS createdAt FROM watch_history ORDER BY watched_at DESC",
+      "SELECT id, movie_id AS movieId, watched_at AS watchedAt, rating, created_at AS createdAt FROM watch_history ORDER BY watched_at DESC",
     ).all(),
   ]);
   const posterRows = await env.DB.prepare("SELECT movie_id, content_type, image FROM movie_posters").all();
+  const seasonEntries = await env.DB.prepare(
+    "SELECT id, movie_id AS movieId, season_number AS seasonNumber, started_at AS startedAt, finished_at AS finishedAt, rating, created_at AS createdAt FROM season_viewings ORDER BY created_at"
+  ).all();
   return json({
-    schemaVersion: 3,
+    schemaVersion: 4,
+    seasonViewings: seasonEntries.results,
     exportedAt: new Date().toISOString(),
     movies: catalog,
     profiles: await listProfiles(env),
@@ -651,6 +655,70 @@ async function updateMemberProgress(request, env, movieId, memberId) {
   return json({ member: next });
 }
 
+function validateViewingRating(rating) {
+  if (rating == null || rating === "") return null;
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ValidationError("Viewing rating must be 1–5.");
+  return rating;
+}
+function validateViewingDay(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) {
+    throw new ValidationError("Invalid viewing date.");
+  }
+  return value;
+}
+async function setCurrentRating(env,movieId,rating) {
+  await env.DB.prepare(`INSERT INTO movie_progress(movie_id,status,rating,updated_at)
+    VALUES (?,'unwatched',?,?)
+    ON CONFLICT(movie_id) DO UPDATE SET rating=excluded.rating,updated_at=excluded.updated_at`)
+    .bind(movieId,rating,new Date().toISOString()).run();
+}
+async function listSeasonViewings(env,movieId) {
+  const entries = await env.DB.prepare(`SELECT id, season_number AS seasonNumber, started_at AS startedAt,
+    finished_at AS finishedAt, rating, created_at AS createdAt
+    FROM season_viewings WHERE movie_id = ? ORDER BY season_number, started_at DESC, id DESC`)
+    .bind(movieId).all();
+  return entries.results;
+}
+async function saveSeasonViewing(request,env,movieId) {
+  const movie = await env.DB.prepare("SELECT id FROM movies WHERE id=? AND category='series'").bind(movieId).first();
+  if (!movie) return json({error:"Series not found."},404);
+  const data = await readJson(request);
+  const season = data.seasonNumber;
+  if (!Number.isInteger(season) || season < 1 || season > 200) throw new ValidationError("Season must be 1–200.");
+  const start = validateViewingDay(data.startedAt);
+  const finish = data.finishedAt ? validateViewingDay(data.finishedAt) : null;
+  if (finish && finish < start) throw new ValidationError("Finish date must not precede start.");
+  const rating = validateViewingRating(data.rating);
+  if (!finish && rating !== null) throw new ValidationError("Finish the season before rating it.");
+  if (data.id != null) {
+    const old = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(data.id,movieId).first();
+    if (!old) return json({error:"Season viewing not found."},404);
+    await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
+      WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,data.id,movieId).run();
+  } else {
+    await env.DB.prepare(`INSERT INTO season_viewings(movie_id,season_number,started_at,finished_at,rating)
+      VALUES (?,?,?,?,?)`).bind(movieId,season,start,finish,rating).run();
+  }
+  if (rating !== null) await setCurrentRating(env,movieId,rating);
+  return json({ seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId) });
+}
+async function removeSeasonViewing(env,movieId,entryId) {
+  const existing = await env.DB.prepare("SELECT id FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
+  if (!existing) return json({error:"Season viewing not found."},404);
+  await env.DB.prepare("DELETE FROM season_viewings WHERE id=? AND movie_id=?").bind(entryId,movieId).run();
+  return json({seasons:await listSeasonViewings(env,movieId),movie:await getCatalogMovie(env,movieId)});
+}
+async function reviseWatchRating(request,env,movieId,entryId) {
+  const data = await readJson(request);
+  if (!Object.prototype.hasOwnProperty.call(data,"rating")) throw new ValidationError("Rating is required.");
+  const rating = validateViewingRating(data.rating);
+  const row = await env.DB.prepare("SELECT id FROM watch_history WHERE id=? AND movie_id=?").bind(entryId,movieId).first();
+  if (!row) return json({error:"Viewing not found."},404);
+  await env.DB.prepare("UPDATE watch_history SET rating=? WHERE id=?").bind(rating,entryId).run();
+  if (rating !== null) await setCurrentRating(env,movieId,rating);
+  return json({events:await listViewingEvents(env,movieId),movie:await getCatalogMovie(env,movieId)});
+}
 async function refreshViewingSummary(env, movieId) {
   const last = await env.DB.prepare(
     "SELECT MAX(watched_at) AS latest, COUNT(*) AS total FROM watch_history WHERE movie_id = ?",
@@ -666,7 +734,7 @@ async function refreshViewingSummary(env, movieId) {
 
 async function listViewingEvents(env, movieId) {
   const watches = await env.DB.prepare(
-    "SELECT id, watched_at AS watchedAt FROM watch_history WHERE movie_id = ? ORDER BY watched_at DESC",
+    "SELECT id, watched_at AS watchedAt, rating FROM watch_history WHERE movie_id = ? ORDER BY watched_at DESC",
   ).bind(movieId).all();
   const attendance = await env.DB.prepare(
     "SELECT a.watch_id, a.member_id FROM watch_attendance a JOIN watch_history w ON w.id = a.watch_id WHERE w.movie_id = ?",
@@ -677,7 +745,7 @@ async function listViewingEvents(env, movieId) {
     viewers.get(row.watch_id).push(row.member_id);
   }
   return watches.results.map((entry) => ({
-    id: entry.id, watchedAt: entry.watchedAt, viewers: viewers.get(entry.id) || [],
+    id: entry.id, watchedAt: entry.watchedAt, rating: entry.rating, viewers: viewers.get(entry.id) || [],
   }));
 }
 
@@ -686,17 +754,24 @@ async function addViewingEvent(request, env, movieId) {
   if (!movie) return json({ error: "Movie not found." }, 404);
   const body = await readJson(request);
   const watchedAt = validateWatchDate(body.date);
+  const rating = validateViewingRating(body.rating);
   if (!Array.isArray(body.viewers) || body.viewers.length < 1 || body.viewers.length > 2) {
     throw new ValidationError("Choose at least one family member.");
   }
   const viewers = [...new Set(body.viewers.map(assertMemberId))];
-  await env.DB.prepare("INSERT OR IGNORE INTO watch_history(movie_id, watched_at) VALUES (?, ?)").bind(movieId, watchedAt).run();
+  await env.DB.prepare("INSERT OR IGNORE INTO watch_history(movie_id, watched_at, rating) VALUES (?, ?, ?)").bind(movieId, watchedAt, rating).run();
+  // Preserve the old event's rating when re-submitting an existing date.
+  // A rating change can be made explicitly using the event-rating endpoint.
   const row = await env.DB.prepare(
     "SELECT id FROM watch_history WHERE movie_id = ? AND watched_at = ?",
   ).bind(movieId, watchedAt).first();
   await env.DB.batch(viewers.map((viewer) => env.DB.prepare(
     "INSERT OR IGNORE INTO watch_attendance(watch_id, member_id) VALUES (?, ?)",
   ).bind(row.id, viewer)));
+  if (rating !== null) {
+    await env.DB.prepare("UPDATE watch_history SET rating = ? WHERE id = ?").bind(rating,row.id).run();
+    await setCurrentRating(env,movieId,rating);
+  }
   await refreshViewingSummary(env, movieId);
   return json({ events: await listViewingEvents(env, movieId), movie: await getCatalogMovie(env, movieId) }, 201);
 }
@@ -753,7 +828,7 @@ async function readBackup(request) {
 async function restoreBackup(env, snapshot) {
   // One atomic D1 transaction. No existing rows are deleted until full validation passes.
   const statements = [
-    "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
+    "DELETE FROM season_viewings", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
     "DELETE FROM movie_progress", "DELETE FROM movie_posters", "DELETE FROM movies",
   ].map((sql) => env.DB.prepare(sql));
   for (const person of snapshot.profiles) {
@@ -784,8 +859,14 @@ async function restoreBackup(env, snapshot) {
   }
   for (const event of snapshot.watchHistory) {
     statements.push(env.DB.prepare(
-      "INSERT INTO watch_history(id, movie_id, watched_at, created_at) VALUES (?, ?, ?, ?)",
-    ).bind(event.id, event.movieId, event.watchedAt, event.createdAt || new Date().toISOString()));
+      "INSERT INTO watch_history(id, movie_id, watched_at, rating, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).bind(event.id, event.movieId, event.watchedAt, event.rating ?? null, event.createdAt || new Date().toISOString()));
+  }
+  for (const season of snapshot.seasonViewings || []) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO season_viewings(id, movie_id, season_number, started_at, finished_at, rating, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(season.id, season.movieId, season.seasonNumber, season.startedAt, season.finishedAt || null, season.rating ?? null,
+      season.createdAt || new Date().toISOString()));
   }
   for (const viewer of snapshot.watchAttendance) {
     statements.push(env.DB.prepare(
@@ -852,6 +933,15 @@ async function handleApi(request, env) {
   const watchEventMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/watches\/(\d+)$/);
   if (watchEventMatch && request.method === "DELETE") return deleteViewingEvent(env, Number(watchEventMatch[1]), Number(watchEventMatch[2]));
 
+  const seasonsMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/seasons$/);
+  if (seasonsMatch && request.method === "GET") return json({seasons:await listSeasonViewings(env,Number(seasonsMatch[1]))});
+  if (seasonsMatch && request.method === "POST") return saveSeasonViewing(request,env,Number(seasonsMatch[1]));
+  const seasonEntryMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/seasons\/(\d+)$/);
+  if (seasonEntryMatch && request.method === "DELETE")
+    return removeSeasonViewing(env,Number(seasonEntryMatch[1]),Number(seasonEntryMatch[2]));
+  const watchRatingMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/watches\/(\d+)\/rating$/);
+  if (watchRatingMatch && request.method === "PATCH")
+    return reviseWatchRating(request,env,Number(watchRatingMatch[1]),Number(watchRatingMatch[2]));
   const historyMatch = url.pathname.match(/^\/api\/movies\/(\d+)\/history$/);
   if (historyMatch && request.method === "GET") {
     return getWatchHistory(env, Number(historyMatch[1]));
