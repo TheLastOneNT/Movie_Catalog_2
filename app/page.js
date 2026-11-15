@@ -1280,7 +1280,7 @@ export default function Home() {
             <button type="button" className={language === "ru" ? "active" : ""} onClick={() => changeLanguage("ru")} aria-pressed={language === "ru"}>RU</button>
             <button type="button" className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")} aria-pressed={language === "en"}>EN</button>
           </div>
-          <button type="button" className="collectionInfoButton" onClick={() => setCollectionInfoOpen(true)} aria-label={language === "en" ? "Collection information" : "Информация о коллекции"} title={language === "en" ? "Collection information" : "Информация о коллекции"}><Icon name="info" size={19} /></button>
+          <button type="button" className="collectionInfoButton" onClick={() => setCollectionInfoOpen(true)} aria-label={(language === "en" ? "Collection information" : "Информация о коллекции") + (visibleLibraryAlerts.length ? ` (${visibleLibraryAlerts.length} ${language === "en" ? "warnings" : "предупреждений"})` : "")} title={language === "en" ? "Collection information" : "Информация о коллекции"}><Icon name="info" size={19} />{visibleLibraryAlerts.length > 0 && <span className="collectionInfoAlertDot" aria-hidden="true" />}</button>
           <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
             <Icon name="plus" size={18} /><span>{t.nav.add}</span>
           </button>
