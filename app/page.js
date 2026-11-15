@@ -626,138 +626,6 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
   </section>;
 }
 
-function PosterReviewPanel({ language, movies, onClose, onApplied }) {
-  const [offset, setOffset] = useState(0);
-  const [candidates, setCandidates] = useState([]);
-  const [selected, setSelected] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [backupConfirmed, setBackupConfirmed] = useState(false);
-  const [backupLoading, setBackupLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const en = language === "en";
-  const pageSize = 6;
-
-  const scan = async (nextOffset) => {
-    setOffset(nextOffset);
-    setLoading(true); setError(""); setMessage(""); setCandidates([]); setSelected([]);
-    try {
-      const response = await fetch(`/api/tmdb/suggestions?offset=${nextOffset}`, { credentials: "same-origin" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "TMDB unavailable");
-      setCandidates(data.candidates || []);
-      setSelected((data.candidates || []).filter((entry) => entry.match?.posterAvailable && !entry.needsReview)
-        .map((entry) => entry.movieId));
-    } catch (err) {
-      setError(err.message || "TMDB unavailable");
-    } finally {
-      setLoading(false);
-    }
-  };
-  const downloadBackup = async () => {
-    setBackupLoading(true); setError("");
-    try {
-      const response = await fetch("/api/export", { credentials: "same-origin" });
-      if (!response.ok) throw new Error(en ? "Backup failed" : "Не удалось скачать резервную копию");
-      const blob = await response.blob();
-      const href = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `movie-catalog-before-posters-${new Date().toISOString().slice(0,10)}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(href), 20000);
-      setBackupConfirmed(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-  const apply = async () => {
-    if (!backupConfirmed || !selected.length) return;
-    setApplying(true); setError(""); setMessage("");
-    let count = 0;
-    for (const candidate of candidates.filter((entry) => selected.includes(entry.movieId))) {
-      try {
-        const response = await fetch(`/api/movies/${candidate.movieId}/tmdb`, {
-          method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ tmdbId: candidate.match.tmdbId, mediaType: candidate.match.mediaType }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Update failed");
-        count++;
-      } catch (err) {
-        setError((previous) => previous + (previous ? "\n" : "") + `${candidate.movieTitle}: ${err.message}`);
-      }
-    }
-    await onApplied();
-    setMessage(en ? `Updated: ${count}. Remaining selections can be retried.` : `Обновлено: ${count}. Неудачные записи можно повторить.`);
-    setSelected((current) => current.filter((id) => !candidates.some((entry) => entry.movieId === id)));
-    setApplying(false);
-  };
-  return <div className="posterReviewBackdrop" role="presentation" onMouseDown={onClose}>
-    <section className="posterReviewDialog" role="dialog" aria-modal="true" aria-label={en ? "Review poster matches" : "Проверка постеров"} onMouseDown={(event) => event.stopPropagation()}>
-      <button type="button" className="modalClose" onClick={onClose} aria-label={en ? "Close" : "Закрыть"}><Icon name="close" size={22} /></button>
-      <h2>{en ? "Original posters & translations" : "Оригинальные постеры и переводы"}</h2>
-      <p>{en ? "Compare suggested TMDB matches before replacing any images. Russian titles and your viewing data remain unchanged." : "Сравни предлагаемые совпадения TMDB перед заменой изображений. Русские названия и история просмотров сохраняются."}</p>
-      <div className="posterReviewToolbar">
-        <button type="button" onClick={() => scan(offset)} disabled={loading || applying}>{loading ? "TMDB…" : (en ? "Find matches" : "Найти совпадения")}</button>
-        <span>{offset + 1}–{Math.min(offset + pageSize, movies.length)} / {movies.length}</span>
-      </div>
-      {candidates.map((entry) => {
-        const existing = movies.find((movie) => movie.id === entry.movieId);
-        return <label className="posterReviewItem" key={entry.movieId}>
-          <input type="checkbox" disabled={!entry.match || applying} checked={selected.includes(entry.movieId)}
-            onChange={(event) => setSelected((current) => event.target.checked ? [...current, entry.movieId] : current.filter((id) => id !== entry.movieId))} />
-          <img src={existing?.poster || "/poster-placeholder.svg"} alt="" className="posterReviewBefore" />
-          {entry.match?.posterUrl ? <img src={entry.match.posterUrl} alt="" className="posterReviewAfter" /> : <div className="posterReviewMissing">—</div>}
-          <span className="posterReviewLabels">
-            <strong>{entry.movieTitle}</strong>
-            <small>{entry.match ? `${entry.match.title} (${entry.match.releaseYear || "?"})` : (entry.error || "No match")}</small>
-            {entry.match?.titleEn && <small>EN: {entry.match.titleEn}</small>}
-            {entry.needsReview && <em>{en ? "Uncertain match — verify carefully" : "Неоднозначное совпадение — проверь внимательно"}</em>}
-            {entry.match && !entry.match.posterAvailable && <em>{en ? "No original-language poster found" : "Постер на языке оригинала не найден"}</em>}
-          </span>
-        </label>;
-      })}
-      {error && <p role="alert" className="formError">{error}</p>}
-      {message && <p role="status">{message}</p>}
-      <div className="posterBackupCheck">
-        <button type="button" onClick={downloadBackup} disabled={backupLoading || applying}>{backupLoading ? "…" : (en ? "Download backup" : "Скачать резервную копию")}</button>
-        <span>{backupConfirmed ? (en ? "Backup requested ✓" : "Копия скачана ✓") : (en ? "Backup required before applying" : "Перед заменой обязательно скачайте копию")}</span>
-      </div>
-      <div className="posterReviewActions">
-        <button type="button" disabled={!offset || loading || applying} onClick={() => scan(Math.max(0,offset-pageSize))}>{en ? "Previous" : "Назад"}</button>
-        <button type="button" disabled={loading || applying || offset + pageSize >= movies.length} onClick={() => scan(offset+pageSize)}>{en ? "Next six" : "Следующие 6"}</button>
-        <button type="button" className="primaryButton" disabled={!selected.length || !backupConfirmed || loading || applying} onClick={apply}>{applying ? "…" : (en ? `Apply selected (${selected.length})` : `Применить выбранные (${selected.length})`)}</button>
-      </div>
-    </section>
-  </div>;
-}
-
-function InstallGuide({ labels, onClose }) {
-  return (
-    <div className="modalBackdrop guideBackdrop" role="presentation" onMouseDown={onClose}>
-      <section className="installGuide" role="dialog" aria-modal="true" aria-label={labels.install.title} onMouseDown={(event) => event.stopPropagation()}>
-        <button type="button" className="modalClose" onClick={onClose} aria-label={labels.install.close}><Icon name="close" size={22} /></button>
-        <span className="brandMark installIcon"><Icon name="share" size={24} /></span>
-        <span className="sectionKicker">{labels.install.eyebrow}</span>
-        <h2>{labels.install.title}</h2>
-        <p>{labels.install.description}</p>
-        <ol>
-          <li>{labels.install.stepOne}</li>
-          <li>{labels.install.stepTwo}</li>
-          <li>{labels.install.stepThree}</li>
-        </ol>
-        <button type="button" className="primaryButton" onClick={onClose}>{labels.install.close}</button>
-      </section>
-    </div>
-  );
-}
-
 export default function Home() {
   const [language, setLanguage] = useState("ru");
   const [catalogReady, setCatalogReady] = useState(false);
@@ -792,7 +660,6 @@ export default function Home() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [collectionInfoOpen, setCollectionInfoOpen] = useState(false);
-  const [posterReviewOpen, setPosterReviewOpen] = useState(false);
   const requestQueue = useRef(Promise.resolve());
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
@@ -885,7 +752,7 @@ export default function Home() {
   }, [selectedId]);
 
   useEffect(() => {
-    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen || collectionInfoOpen || posterReviewOpen;
+    const overlayOpen = selectedId || accessPromptOpen || addMovieOpen || installGuideOpen || collectionInfoOpen;
     document.body.style.overflow = overlayOpen ? "hidden" : "";
     const closeOnEscape = (event) => {
       if (event.key === "Escape") {
@@ -896,7 +763,6 @@ export default function Home() {
         setAddMovieOpen(false);
         setInstallGuideOpen(false);
         setCollectionInfoOpen(false);
-        setPosterReviewOpen(false);
 
         pendingAction.current = null;
       }
@@ -906,7 +772,7 @@ export default function Home() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, collectionInfoOpen, posterReviewOpen]);
+  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, collectionInfoOpen]);
 
   const unlock = async (accessKey) => {
     try {
@@ -1458,13 +1324,11 @@ export default function Home() {
               <div><strong>{watchedCount}</strong><span>{language === "en" ? "Watched" : "Просмотрено"}</span></div>
               <div><strong>{ratedCount}</strong><span>{language === "en" ? "Rated" : "С оценкой"}</span></div>
               <div><strong>{watchlistCount}</strong><span>{language === "en" ? "Watchlist" : "Хочу посмотреть"}</span></div>
-              <button type="button" className="posterReviewLaunch" onClick={() => { setCollectionInfoOpen(false); setPosterReviewOpen(true); }}>{language === "en" ? "Review original posters and translations" : "Подобрать оригинальные постеры и переводы"}</button>
             </div>
           </section>
         </div>
       )}
 
-      {posterReviewOpen && <PosterReviewPanel language={language} movies={movies} onClose={() => setPosterReviewOpen(false)} onApplied={loadCatalog} />}
       {selected && (
         <div className="modalBackdrop" role="presentation" onMouseDown={closeMovie}>
           {randomMode && (
