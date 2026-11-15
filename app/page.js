@@ -205,50 +205,22 @@ async function optimizePoster(file) {
 }
 
 // One consistent calendar for the add form and the movie details.
+// Use the system date picker in BOTH the add form and movie details.
+// On iOS it supports jumping directly to a year and month (no month-by-month scrolling).
+// The visual shell prevents WebKit's intrinsic date-input width from overflowing.
 function ViewingDateField({value,onChange,label,disabled=false,max,language="ru"}) {
-  const [open,setOpen]=useState(false);
-  const [month,setMonth]=useState(()=>(value||todayLocal()).slice(0,7));
-  const en=language==="en",locale=en?"en-US":"ru-RU";
-  const year=Number(month.slice(0,4)),monthIndex=Number(month.slice(5,7))-1;
-  const firstWeekday=(new Date(Date.UTC(year,monthIndex,1)).getUTCDay()+6)%7;
-  const monthDays=new Date(Date.UTC(year,monthIndex+1,0)).getUTCDate();
-  const cells=Array.from({length:Math.ceil((firstWeekday+monthDays)/7)*7},(_,i)=>{
-    const day=i-firstWeekday+1;return day>=1&&day<=monthDays?day:null;
-  });
-  const iso=(day)=>`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-  const navigate=(offset)=>{
-    const date=new Date(Date.UTC(year,monthIndex+offset,1));
-    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
-  };
-  const pretty=value?new Intl.DateTimeFormat(locale,{year:"numeric",month:"short",day:"numeric",timeZone:"UTC"})
-    .format(new Date(`${value.slice(0,10)}T12:00:00Z`)):(en?"Choose date":"Выбрать дату");
-  const header=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"})
-    .format(new Date(Date.UTC(year,monthIndex,1)));
-  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
-  return <div className={disabled?"viewingDayField disabled":"viewingDayField"}>
-    <button type="button" className="seasonRangeTrigger" disabled={disabled} aria-expanded={open}
-      onClick={()=>{if(!open)setMonth((value||todayLocal()).slice(0,7));setOpen(prev=>!prev);}}>
-      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty}</span>
-    </button>
-    {open&&!disabled&&<div className="seasonCalendar viewingDayCalendar" role="group" aria-label={label}>
-      <div className="seasonCalendarHead">
-        <button type="button" onClick={()=>navigate(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
-        <strong>{header}</strong>
-        <button type="button" onClick={()=>navigate(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
-      </div>
-      <div className="seasonCalendarGrid">
-        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
-        {cells.map((day,i)=>day?<button key={i} type="button"
-          className={`seasonCalendarDay ${iso(day)===value?"start":""}`}
-          disabled={Boolean(max&&iso(day)>max)} aria-pressed={iso(day)===value}
-          onClick={()=>{onChange(iso(day));setOpen(false);}}>{day}</button>:<span key={i}/>)}
-      </div>
-      <div className="seasonCalendarActions">
-        <button type="button" onClick={()=>{onChange(todayLocal());setOpen(false);}}>{en?"Today":"Сегодня"}</button>
-        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
-      </div>
-    </div>}
-  </div>;
+  const en=language==="en";
+  const pretty=value
+    ? new Intl.DateTimeFormat(en?"en-US":"ru-RU",{
+        year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
+      }).format(new Date(`${value.slice(0,10)}T12:00:00Z`))
+    : (en?"Choose date":"Выбрать дату");
+  return <span className={disabled?"viewingDateField disabled":"viewingDateField"}>
+    <span className="viewingDateFieldText" aria-hidden="true">{pretty}</span>
+    <Icon name="calendar" size={18} />
+    <input type="date" aria-label={label} value={value||""} disabled={disabled}
+      max={max} onChange={(event)=>onChange(event.target.value)} />
+  </span>;
 }
 
 function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
