@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translations } from "@/lib/i18n";
 import { matchesMovieQuery } from "@/lib/search";
 import { randomizeMovies, sortOldestWatched } from "@/lib/catalog";
+import { findDuplicateTitle } from "@/lib/title-duplicates";
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
@@ -917,7 +918,15 @@ export default function Home() {
       method: "PUT", credentials: "same-origin",
       headers: { "content-type": "application/json" }, body: JSON.stringify(form),
     });
-    if (!response.ok) throw new Error(t.sync.error);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error(language === "en"
+          ? `Already in your library: "${payload.duplicateTitle || form.title}". Choose a different title or year.`
+          : `Уже есть в коллекции: «${payload.duplicateTitle || form.title}». Выберите другое название или год.`);
+      }
+      throw new Error(payload.error || t.sync.error);
+    }
     if (posterFile) {
       const poster = await optimizePoster(posterFile);
       const upload = await fetch(`/api/movies/${movieId}/poster`, {
@@ -1077,6 +1086,12 @@ export default function Home() {
   };
 
   const createMovie = async (form, posterFile, tmdbPoster) => {
+    const duplicate = findDuplicateTitle(movies, form);
+    if (duplicate) {
+      throw new Error(language === "en"
+        ? `Already in your library: "${duplicate.title}" (${duplicate.releaseYear || "year unknown"}). Open the existing card instead.`
+        : `Уже есть в коллекции: «${duplicate.title}» (${duplicate.releaseYear || "год неизвестен"}). Откройте существующую карточку.`);
+    }
     const optimizedPoster = posterFile ? await optimizePoster(posterFile) : null;
     const response = await fetch("/api/movies", {
       method: "POST",
@@ -1093,7 +1108,14 @@ export default function Home() {
       }),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || t.addMovie.error);
+    if (!response.ok) {
+      if (response.status === 409) {
+        throw new Error(language === "en"
+          ? `Already in your library: "${data.duplicateTitle || form.title}". Open the existing card instead.`
+          : `Уже есть в коллекции: «${data.duplicateTitle || form.title}». Откройте существующую карточку.`);
+      }
+      throw new Error(data.error || t.addMovie.error);
+    }
 
     if (optimizedPoster) {
       const posterResponse = await fetch(`/api/movies/${data.movie.id}/poster`, {

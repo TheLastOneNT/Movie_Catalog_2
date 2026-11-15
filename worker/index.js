@@ -1,5 +1,6 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 import { averageRatedSeasons } from "../lib/series-cycles.js";
+import { findDuplicateTitle } from "../lib/title-duplicates.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
@@ -466,6 +467,14 @@ async function archiveTmdbPoster(env, movieId, url) {
   } catch (error) { console.warn("TMDB poster archival failed", error); }
 }
 
+async function findExistingMovie(env, input, excludedId = null) {
+  // Read only the identity fields and never modify a matched movie automatically.
+  const rows = await env.DB.prepare(
+    "SELECT id, category, title_ru AS title, title_en AS titleEn, release_year AS releaseYear FROM movies WHERE category = ?"
+  ).bind(input.category).all();
+  return findDuplicateTitle(rows.results || [], input, excludedId);
+}
+
 async function createMovie(request, env) {
   const input = await readJson(request);
   const title = optionalText(input.title, "Title", 160);
@@ -492,6 +501,8 @@ async function createMovie(request, env) {
   if (input.status === "watched" && !Number.isInteger(input.rating))
     throw new ValidationError("A watched movie requires a 1–5 rating.");
   if (input.status === "watched") validateWatchDate(input.lastWatchedAt);
+  const existing = await findExistingMovie(env, {title, titleEn, category:input.category, releaseYear});
+  if (existing) return json({error:"A title with this name, category and release year is already in your library.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   const posterFromTmdb = tmdbPosterUrl(input.posterFromTmdb);
   const nextOrder = await env.DB.prepare(
     "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
@@ -968,10 +979,13 @@ async function editMovie(request, env, movieId) {
   if (year !== null && (!Number.isInteger(year) || year < 1888 || year > 2200)) {
     throw new ValidationError("Invalid release year.");
   }
+  const titleEn = optionalText(input.titleEn, "English title", 160);
+  const existing = await findExistingMovie(env, {title, titleEn, category:input.category, releaseYear:year}, movieId);
+  if (existing) return json({error:"Another title with this name, category and release year already exists.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   await env.DB.prepare(`
     UPDATE movies SET title_ru = ?, title_en = ?, category = ?,
       description_ru = ?, description_en = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-  `).bind(title, optionalText(input.titleEn, "English title", 160), input.category,
+  `).bind(title, titleEn, input.category,
     optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year, movieId).run();
   return json({ movie: await getCatalogMovie(env, movieId) });
 }
