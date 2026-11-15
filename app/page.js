@@ -772,7 +772,7 @@ export default function Home() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, collectionInfoOpen, posterReviewOpen]);
+  }, [accessPromptOpen, addMovieOpen, installGuideOpen, selectedId, collectionInfoOpen]);
 
   const unlock = async (accessKey) => {
     try {
