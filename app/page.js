@@ -653,6 +653,8 @@ export default function Home() {
   const [randomIndex, setRandomIndex] = useState(-1);
   const [noteDraft, setNoteDraft] = useState("");
   const [syncState, setSyncState] = useState("synced");
+  const [cacheSavedAt, setCacheSavedAt] = useState(null);
+  const [saveError, setSaveError] = useState("");
   const [addMovieOpen, setAddMovieOpen] = useState(false);
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -687,6 +689,9 @@ export default function Home() {
       const data = await response.json();
       setMovies(data.movies);
       window.localStorage.setItem("movie-catalog-cache-v1", JSON.stringify(data.movies));
+      const savedAt = new Date().toISOString();
+      window.localStorage.setItem("movie-catalog-cache-saved-at", savedAt);
+      setCacheSavedAt(savedAt);
       setSyncState("synced");
       setCatalogReady(true);
       return true;
@@ -694,6 +699,7 @@ export default function Home() {
       const cached = window.localStorage.getItem("movie-catalog-cache-v1");
       if (cached) {
         setMovies(JSON.parse(cached));
+        setCacheSavedAt(window.localStorage.getItem("movie-catalog-cache-saved-at"));
         setSyncState("offline");
         setCatalogReady(true);
         return true;
@@ -748,6 +754,7 @@ export default function Home() {
     setHistoryEvents([]);
     setWatchDate(todayLocal());
     setWatchRating(null);
+    setSaveError("");
 
   }, [selectedId]);
 
@@ -801,6 +808,8 @@ export default function Home() {
     setAuthState("guest");
     setMovies([]);
     window.localStorage.removeItem("movie-catalog-cache-v1");
+    window.localStorage.removeItem("movie-catalog-cache-saved-at");
+    setCacheSavedAt(null);
     navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_PRIVATE" });
     setAccessPromptOpen(false);
     pendingAction.current = null;
@@ -865,22 +874,32 @@ export default function Home() {
   const recordWatch = async () => {
     if (!selectedId || watchSubmitting || syncState === "offline") return;
     setWatchSubmitting(true);
+    setSaveError("");
     try {
       const response = await fetch(`/api/movies/${selectedId}/watches`, {
         method: "POST", credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ date: watchDate, viewers: watchViewers, rating: watchRating }),
       });
-      if (!response.ok) throw new Error("Failed to record watch.");
       const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) {
+          throw new Error(language === "en"
+            ? "This date is already in the viewing history. Edit the existing entry instead."
+            : "Эта дата уже есть в истории. Измените существующую запись вместо повторного добавления.");
+        }
+        throw new Error(data.error || (language === "en" ? "Could not record the viewing." : "Не удалось записать просмотр."));
+      }
       setMovies((current) => current.map((movie) => movie.id === selectedId ? data.movie : movie));
       setHistoryOpen(true);
       setHistoryEvents(data.events);
       setHistoryDates(data.events.map((event) => event.watchedAt));
       setWatchRating(null);
       setSyncState("synced");
-    } catch { setSyncState("error"); }
-    finally { setWatchSubmitting(false); }
+    } catch (error) {
+      setSyncState("error");
+      setSaveError(error.message || t.sync.error);
+    } finally { setWatchSubmitting(false); }
   };
 
   const updateWatchRating = async (eventId, rating) => {
@@ -1240,7 +1259,11 @@ export default function Home() {
         </div>
       </header>
 
-      {syncState === "offline" && <div className="offlineBanner">{t.sync.offline}</div>}
+      {syncState === "offline" && <div className="offlineBanner" role="status">
+        {t.sync.offline} {cacheSavedAt
+          ? (language === "en" ? "Last saved:" : "Последнее сохранение:") + " " + new Date(cacheSavedAt).toLocaleString(t.locale)
+          : (language === "en" ? "Cache date unknown." : "Дата сохранения копии неизвестна.")}
+      </div>}
 
       <section className="catalogSection" id="top">
         <div className="sectionIntro catalogIntro discoveryIntro">
@@ -1391,6 +1414,7 @@ export default function Home() {
                       <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
                     </div>
                     <button className="primaryButton recordButton" type="button" onClick={recordWatch} disabled={watchSubmitting || syncState === "offline"}>{watchSubmitting ? t.sync.saving : t.family.recordWatch}</button>
+                    {saveError && <p className="formError" role="alert">{saveError}</p>}
                   </div>
                   <div className="watchCount">
                     <span>{t.modal.watches}</span><div><strong>{selected.progress.watchCount || 0}</strong>
