@@ -667,12 +667,27 @@ export default function Home() {
   const [collectionInfoOpen, setCollectionInfoOpen] = useState(false);
   const [dismissedLibraryAlerts, setDismissedLibraryAlerts] = useState([]);
   const [libraryAlertsReady, setLibraryAlertsReady] = useState(false);
+  const [libraryAlertsError, setLibraryAlertsError] = useState("");
   const requestQueue = useRef(Promise.resolve());
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
   const t = translations[language];
 
   const personal = (movie) => personalFor(movie, activeMember);
+
+  const loadLibraryAlerts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/catalog/alerts/dismissed", {credentials:"same-origin",cache:"no-store"});
+      if (!response.ok) throw new Error("Could not load catalog warnings.");
+      const data = await response.json();
+      setDismissedLibraryAlerts(data.keys || []);
+      setLibraryAlertsError("");
+      setLibraryAlertsReady(true);
+    } catch {
+      setLibraryAlertsReady(false);
+      setLibraryAlertsError("unavailable");
+    }
+  }, []);
 
   const loadProfiles = useCallback(async () => {
     const response = await fetch("/api/profiles", { credentials: "same-origin" });
@@ -714,11 +729,8 @@ export default function Home() {
   useEffect(() => {
     setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
     const savedLanguage = window.localStorage.getItem("movie-catalog-language");
-    try {
-      const saved = JSON.parse(window.localStorage.getItem("movie-catalog-dismissed-alerts-v1") || "[]");
-      setDismissedLibraryAlerts(Array.isArray(saved) ? saved.filter((item)=>typeof item === "string").slice(-500) : []);
-    } catch { setDismissedLibraryAlerts([]); }
-    setLibraryAlertsReady(true);
+    // Warnings are shared by all household devices, not saved per browser.
+    window.localStorage.removeItem("movie-catalog-dismissed-alerts-v1");
     window.localStorage.removeItem("movie-catalog-member");
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     setLanguage(savedLanguage === "en" ? "en" : "ru");
@@ -733,7 +745,7 @@ export default function Home() {
           setCatalogReady(true);
         } else if (session.authenticated) {
           setAuthState("authenticated");
-          await Promise.all([loadCatalog(), loadProfiles()]);
+          await Promise.all([loadCatalog(), loadProfiles(), loadLibraryAlerts()]);
         } else {
           setAuthState("guest");
           setCatalogReady(true);
@@ -742,6 +754,8 @@ export default function Home() {
         if (window.localStorage.getItem("movie-catalog-cache-v1")) {
           setAuthState("authenticated");
           await loadCatalog();
+          // The offline cache is read-only; warning dismissals require the server.
+          setLibraryAlertsReady(false);
         } else {
           setAuthState("guest");
           setCatalogReady(true);
@@ -749,7 +763,7 @@ export default function Home() {
       }
     };
     initialize();
-  }, [loadCatalog, loadProfiles]);
+  }, [loadCatalog, loadProfiles, loadLibraryAlerts]);
 
   useEffect(() => {
     const selected = movies.find((movie) => movie.id === selectedId);
@@ -797,7 +811,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) return { ok: false, error: data.error };
       setAuthState("authenticated");
-      await Promise.all([loadCatalog(), loadProfiles()]);
+      await Promise.all([loadCatalog(), loadProfiles(), loadLibraryAlerts()]);
       setAccessPromptOpen(false);
       const action = pendingAction.current;
       pendingAction.current = null;
@@ -812,6 +826,8 @@ export default function Home() {
     await fetch("/api/session", { method: "DELETE", credentials: "same-origin" });
     setAuthState("guest");
     setMovies([]);
+    setDismissedLibraryAlerts([]);
+    setLibraryAlertsReady(false);
     window.localStorage.removeItem("movie-catalog-cache-v1");
     navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_PRIVATE" });
     setAccessPromptOpen(false);
@@ -1187,12 +1203,26 @@ export default function Home() {
   const visibleLibraryAlerts = libraryAlertsReady
     ? potentialDuplicatePairs.filter((pair) => !dismissedLibraryAlerts.includes(pair.key))
     : [];
-  const dismissLibraryAlert = (key) => {
-    const next = [...new Set([...dismissedLibraryAlerts, key])].slice(-500);
-    setDismissedLibraryAlerts(next);
-    try { window.localStorage.setItem("movie-catalog-dismissed-alerts-v1", JSON.stringify(next)); }
-    catch { /* Browser storage may be disabled; dismiss for this session anyway. */ }
+  const dismissLibraryAlert = async (key) => {
+    if (syncState === "offline") return;
+    try {
+      const response = await fetch("/api/catalog/alerts/dismissed", {
+        method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+        body:JSON.stringify({key}),
+      });
+      if (!response.ok) throw new Error("Could not dismiss this warning.");
+      setDismissedLibraryAlerts((current)=>current.includes(key)?current:[...current,key]);
+      setLibraryAlertsError("");
+    } catch {
+      setLibraryAlertsError("save");
+    }
   };
+  useEffect(() => {
+    if (collectionInfoOpen && authState === "authenticated" && syncState !== "offline") {
+      loadLibraryAlerts();
+    }
+  }, [collectionInfoOpen, authState, syncState, loadLibraryAlerts]);
+
   const openAlertMovie = (id) => {
     setCollectionInfoOpen(false);
     openMovie(id);
@@ -1376,6 +1406,9 @@ export default function Home() {
               <h3 id="libraryAlertsHeading">{language === "en" ? "Catalog warnings" : "Предупреждения каталога"}
                 {visibleLibraryAlerts.length > 0 && <span className="libraryAlertCount">{visibleLibraryAlerts.length}</span>}
               </h3>
+              {libraryAlertsError && <p className="formError" role="alert">{language === "en"
+                ? "Could not synchronize warnings. Try opening this window again."
+                : "Не удалось синхронизировать предупреждения. Откройте это окно повторно."}</p>}
               {visibleLibraryAlerts.length ? (
                 <ul className="libraryAlertList">
                   {visibleLibraryAlerts.map(({first,second,key}) => <li key={key} className="libraryAlert">
@@ -1391,7 +1424,8 @@ export default function Home() {
                     </button>
                   </li>)}
                 </ul>
-              ) : <p className="libraryAlertsEmpty">{language === "en" ? "No new warnings." : "Новых предупреждений нет."}</p>}
+              ) : libraryAlertsReady ? <p className="libraryAlertsEmpty">{language === "en" ? "No new warnings." : "Новых предупреждений нет."}</p>
+                : <p className="libraryAlertsEmpty">{language === "en" ? "Warnings unavailable offline or while loading." : "Предупреждения недоступны без соединения или ещё загружаются."}</p>}
             </section>
           </section>
         </div>
