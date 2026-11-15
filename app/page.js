@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translations } from "@/lib/i18n";
 import { matchesMovieQuery } from "@/lib/search";
 import { randomizeMovies, sortOldestWatched } from "@/lib/catalog";
-import { findDuplicateTitle } from "@/lib/title-duplicates";
+import { findDuplicateTitle, findPotentialDuplicatePairs } from "@/lib/title-duplicates";
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
@@ -149,6 +149,7 @@ function todayLocal() {
 
 function MovieCard({ movie, language, labels, onOpen, view }) {
   const watched = movie.progress.status === "watched";
+  const inWatchlist = Boolean(personalFor(movie, 1).wantsToWatch) && !watched;
   const rating = movie.progress.rating;
   const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
 
@@ -159,16 +160,19 @@ function MovieCard({ movie, language, labels, onOpen, view }) {
         <span className="categoryBadge">{labels.categories[movie.category]}</span>
         <div className="posterShade" />
       </div>
-      {view !== "list" && (rating || watched) && (
-        <span className={rating ? "cardRatingBadge" : "cardRatingBadge viewed"} aria-label={rating ? `Оценка: ${rating} из 5` : "Просмотрено, без оценки"}>
-          {rating ? `★ ${rating}/5` : <Icon name="check" size={17} />}
+      {view !== "list" && (rating || watched || inWatchlist) && (
+        <span className={rating ? "cardRatingBadge" : watched ? "cardRatingBadge viewed" : "cardRatingBadge watchlist"} aria-label={rating
+          ? (language === "en" ? `Rating: ${rating} of 5` : `Оценка: ${rating} из 5`)
+          : watched ? (language === "en" ? "Watched, not rated" : "Просмотрено, без оценки")
+          : (language === "en" ? "Want to watch" : "Хочу посмотреть")}>
+          {rating ? `★ ${rating}/5` : watched ? <Icon name="check" size={17} /> : (language === "en" ? "◷ Watchlist" : "◷ В планах")}
         </span>
       )}
       <div className="movieMeta">
         <h3><button type="button" className="cardTitleButton" onClick={() => onOpen(movie.id)}>{title}</button>{movie.releaseYear ? <small className="cardYear"> · {movie.releaseYear}</small> : null}</h3>
         {view === "list" && (
           <div className="cardBottom">
-            {(rating || watched) && <span className={rating ? "listRatingLabel" : "listRatingLabel viewed"}>{rating ? `★ ${rating}/5` : "✓ Просмотрено"}</span>}
+            {(rating || watched || inWatchlist) && <span className={rating ? "listRatingLabel" : watched ? "listRatingLabel viewed" : "listRatingLabel watchlist"}>{rating ? `★ ${rating}/5` : watched ? (language === "en" ? "✓ Watched" : "✓ Просмотрено") : (language === "en" ? "◷ Watchlist" : "◷ В планах")}</span>}
             <button type="button" className="moreLink cardDetailsButton" onClick={() => onOpen(movie.id)} aria-label={labels.catalog.details + ": " + title}>{labels.catalog.details} <Icon name="chevron" size={14} /></button>
           </div>
         )}
@@ -661,12 +665,29 @@ export default function Home() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [collectionInfoOpen, setCollectionInfoOpen] = useState(false);
+  const [dismissedLibraryAlerts, setDismissedLibraryAlerts] = useState([]);
+  const [libraryAlertsReady, setLibraryAlertsReady] = useState(false);
+  const [libraryAlertsError, setLibraryAlertsError] = useState("");
   const requestQueue = useRef(Promise.resolve());
   const restoreInputRef = useRef(null);
   const pendingAction = useRef(null);
   const t = translations[language];
 
   const personal = (movie) => personalFor(movie, activeMember);
+
+  const loadLibraryAlerts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/catalog/alerts/dismissed", {credentials:"same-origin",cache:"no-store"});
+      if (!response.ok) throw new Error("Could not load catalog warnings.");
+      const data = await response.json();
+      setDismissedLibraryAlerts(data.keys || []);
+      setLibraryAlertsError("");
+      setLibraryAlertsReady(true);
+    } catch {
+      setLibraryAlertsReady(false);
+      setLibraryAlertsError("unavailable");
+    }
+  }, []);
 
   const loadProfiles = useCallback(async () => {
     const response = await fetch("/api/profiles", { credentials: "same-origin" });
@@ -708,6 +729,8 @@ export default function Home() {
   useEffect(() => {
     setShuffleSeed(Math.floor(Math.random() * 2_147_483_647));
     const savedLanguage = window.localStorage.getItem("movie-catalog-language");
+    // Warnings are shared by all household devices, not saved per browser.
+    window.localStorage.removeItem("movie-catalog-dismissed-alerts-v1");
     window.localStorage.removeItem("movie-catalog-member");
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     setLanguage(savedLanguage === "en" ? "en" : "ru");
@@ -722,7 +745,7 @@ export default function Home() {
           setCatalogReady(true);
         } else if (session.authenticated) {
           setAuthState("authenticated");
-          await Promise.all([loadCatalog(), loadProfiles()]);
+          await Promise.all([loadCatalog(), loadProfiles(), loadLibraryAlerts()]);
         } else {
           setAuthState("guest");
           setCatalogReady(true);
@@ -731,6 +754,8 @@ export default function Home() {
         if (window.localStorage.getItem("movie-catalog-cache-v1")) {
           setAuthState("authenticated");
           await loadCatalog();
+          // The offline cache is read-only; warning dismissals require the server.
+          setLibraryAlertsReady(false);
         } else {
           setAuthState("guest");
           setCatalogReady(true);
@@ -738,7 +763,7 @@ export default function Home() {
       }
     };
     initialize();
-  }, [loadCatalog, loadProfiles]);
+  }, [loadCatalog, loadProfiles, loadLibraryAlerts]);
 
   useEffect(() => {
     const selected = movies.find((movie) => movie.id === selectedId);
@@ -786,7 +811,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) return { ok: false, error: data.error };
       setAuthState("authenticated");
-      await Promise.all([loadCatalog(), loadProfiles()]);
+      await Promise.all([loadCatalog(), loadProfiles(), loadLibraryAlerts()]);
       setAccessPromptOpen(false);
       const action = pendingAction.current;
       pendingAction.current = null;
@@ -801,6 +826,8 @@ export default function Home() {
     await fetch("/api/session", { method: "DELETE", credentials: "same-origin" });
     setAuthState("guest");
     setMovies([]);
+    setDismissedLibraryAlerts([]);
+    setLibraryAlertsReady(false);
     window.localStorage.removeItem("movie-catalog-cache-v1");
     navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_PRIVATE" });
     setAccessPromptOpen(false);
@@ -1172,6 +1199,34 @@ export default function Home() {
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
   const ratedCount = movies.filter((movie) => movie.progress.rating).length;
+  const potentialDuplicatePairs = useMemo(() => findPotentialDuplicatePairs(movies), [movies]);
+  const visibleLibraryAlerts = libraryAlertsReady
+    ? potentialDuplicatePairs.filter((pair) => !dismissedLibraryAlerts.includes(pair.key))
+    : [];
+  const dismissLibraryAlert = async (key) => {
+    if (syncState === "offline") return;
+    try {
+      const response = await fetch("/api/catalog/alerts/dismissed", {
+        method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+        body:JSON.stringify({key}),
+      });
+      if (!response.ok) throw new Error("Could not dismiss this warning.");
+      setDismissedLibraryAlerts((current)=>current.includes(key)?current:[...current,key]);
+      setLibraryAlertsError("");
+    } catch {
+      setLibraryAlertsError("save");
+    }
+  };
+  useEffect(() => {
+    if (collectionInfoOpen && authState === "authenticated" && syncState !== "offline") {
+      loadLibraryAlerts();
+    }
+  }, [collectionInfoOpen, authState, syncState, loadLibraryAlerts]);
+
+  const openAlertMovie = (id) => {
+    setCollectionInfoOpen(false);
+    openMovie(id);
+  };
   const selected = movies.find((movie) => movie.id === selectedId) || null;
   const randomMode = randomIndex >= 0;
 
@@ -1255,7 +1310,7 @@ export default function Home() {
             <button type="button" className={language === "ru" ? "active" : ""} onClick={() => changeLanguage("ru")} aria-pressed={language === "ru"}>RU</button>
             <button type="button" className={language === "en" ? "active" : ""} onClick={() => changeLanguage("en")} aria-pressed={language === "en"}>EN</button>
           </div>
-          <button type="button" className="collectionInfoButton" onClick={() => setCollectionInfoOpen(true)} aria-label={language === "en" ? "Collection information" : "Информация о коллекции"} title={language === "en" ? "Collection information" : "Информация о коллекции"}><Icon name="info" size={19} /></button>
+          <button type="button" className="collectionInfoButton" onClick={() => setCollectionInfoOpen(true)} aria-label={(language === "en" ? "Collection information" : "Информация о коллекции") + (visibleLibraryAlerts.length ? ` (${visibleLibraryAlerts.length} ${language === "en" ? "warnings" : "предупреждений"})` : "")} title={language === "en" ? "Collection information" : "Информация о коллекции"}><Icon name="info" size={19} />{visibleLibraryAlerts.length > 0 && <span className="collectionInfoAlertDot" aria-hidden="true" />}</button>
           <button type="button" className="addHeader" onClick={openAddMovie} aria-label={t.nav.add}>
             <Icon name="plus" size={18} /><span>{t.nav.add}</span>
           </button>
@@ -1347,6 +1402,31 @@ export default function Home() {
               <div><strong>{ratedCount}</strong><span>{language === "en" ? "Rated" : "С оценкой"}</span></div>
               <div><strong>{watchlistCount}</strong><span>{language === "en" ? "Watchlist" : "Хочу посмотреть"}</span></div>
             </div>
+            <section className="libraryAlerts" aria-labelledby="libraryAlertsHeading">
+              <h3 id="libraryAlertsHeading">{language === "en" ? "Catalog warnings" : "Предупреждения каталога"}
+                {visibleLibraryAlerts.length > 0 && <span className="libraryAlertCount">{visibleLibraryAlerts.length}</span>}
+              </h3>
+              {libraryAlertsError && <p className="formError" role="alert">{language === "en"
+                ? "Could not synchronize warnings. Try opening this window again."
+                : "Не удалось синхронизировать предупреждения. Откройте это окно повторно."}</p>}
+              {visibleLibraryAlerts.length ? (
+                <ul className="libraryAlertList">
+                  {visibleLibraryAlerts.map(({first,second,key}) => <li key={key} className="libraryAlert">
+                    <p>{language === "en" ? "Possible duplicate entries. Review before deleting anything." : "Возможно, эти записи дублируются. Проверьте их перед удалением."}</p>
+                    <div className="libraryAlertMovies">
+                      {[first,second].map((movie) => <button type="button" key={movie.id} className="libraryAlertMovie" onClick={() => openAlertMovie(movie.id)}>
+                        <img src={movie.poster} alt="" loading="lazy" />
+                        <span>{language === "en" && movie.titleEn ? movie.titleEn : movie.title} {movie.releaseYear ? `(${movie.releaseYear})` : ""}</span>
+                      </button>)}
+                    </div>
+                    <button type="button" className="libraryAlertDismiss" onClick={() => dismissLibraryAlert(key)}>
+                      {language === "en" ? "Dismiss warning" : "Закрыть предупреждение"}
+                    </button>
+                  </li>)}
+                </ul>
+              ) : libraryAlertsReady ? <p className="libraryAlertsEmpty">{language === "en" ? "No new warnings." : "Новых предупреждений нет."}</p>
+                : <p className="libraryAlertsEmpty">{language === "en" ? "Warnings unavailable offline or while loading." : "Предупреждения недоступны без соединения или ещё загружаются."}</p>}
+            </section>
           </section>
         </div>
       )}
