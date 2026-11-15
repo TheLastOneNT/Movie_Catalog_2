@@ -769,3 +769,6 @@ img { display: block; max-width: 100%; }
   .libraryAlertMovie img { width: 28px; height: 43px; }
   .libraryAlertMovie span { font-size: 11px; }
 }
+
+.collectionInfoButton { position: relative; }
+.collectionInfoAlertDot { position: absolute; right: -3px; top: -3px; width: 10px; height: 10px; border: 2px solid #151417; border-radius: 50%; background: #ecad47; box-sizing: content-box; }
