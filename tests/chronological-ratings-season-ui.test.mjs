@@ -18,12 +18,13 @@ test("series average each season's most recent rated completed viewing",()=>{
   const sql=worker.slice(worker.indexOf("const EFFECTIVE_RATING_SQL"),worker.indexOf("function mapMovie("));
   assert.match(sql,/CASE WHEN m\.category='series' THEN/);
   assert.match(sql,/ROUND\(AVG\(latest\.rating\),1\)/);
-  assert.match(sql,/PARTITION BY sv\.movie_id,sv\.season_number/);
-  assert.match(sql,/latest\.movie_id=m\.id AND latest\.recent=1/);
+  assert.match(sql,/sc.outcome IN \(\x27completed\x27,\x27stopped\x27\)/);
+  assert.match(sql,/PARTITION BY sv.cycle_id,sv.season_number/);
+  assert.match(sql,/latest\.ranking=1/);
 });
 
 test("season viewings are listed by dates rather than season number",()=>{
-  assert.match(worker,/ORDER BY COALESCE\(finished_at,started_at\) DESC, started_at DESC, id DESC/);
+  assert.match(worker,/ORDER BY COALESCE\(finished_at,started_at\) DESC,started_at DESC,id DESC/);
 });
 test("watch history shows date and compact editable rating in same row",()=>{
   assert.equal((page.match(/className="watchEventLine"/g)||[]).length,2);

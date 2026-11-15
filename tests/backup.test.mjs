@@ -23,3 +23,11 @@ test("accepts v4 backup including an empty season diary", () => {
 test("rejects v4 backup missing season diary to prevent data loss", () => {
  assert.throws(()=>validateBackup({...minimal(),schemaVersion:4}),BackupError);
 });
+
+test("accepts v5 cycle-aware snapshots with no entries",()=>{
+ const v5={...minimal(),schemaVersion:5,seasonViewings:[],ratingChanges:[],seriesCycles:[]};
+ assert.equal(validateBackup(v5).seasons,0);
+});
+test("rejects v5 snapshots without viewing cycles",()=>{
+ assert.throws(()=>validateBackup({...minimal(),schemaVersion:5,seasonViewings:[],ratingChanges:[]}),BackupError);
+});

@@ -14,11 +14,12 @@ function validId(value) { return Number.isSafeInteger(value) && value > 0; }
 
 export function validateBackup(snapshot) {
   ensure(snapshot && typeof snapshot === "object" && !Array.isArray(snapshot), "Invalid backup file.");
-  ensure(snapshot.schemaVersion === 3 || snapshot.schemaVersion === 4, "Only Movie Catalog v3/v4 backups can be restored.");
-  if (snapshot.schemaVersion === 4) {
+  ensure([3,4,5].includes(snapshot.schemaVersion), "Only Movie Catalog v3/v4/v5 backups can be restored.");
+  if (snapshot.schemaVersion >= 4) {
     ensure(Array.isArray(snapshot.seasonViewings) && snapshot.seasonViewings.length <= 20000, "Invalid season viewing history.");
     ensure(Array.isArray(snapshot.ratingChanges) && snapshot.ratingChanges.length <= 40000, "Invalid rating history.");
   }
+  if(snapshot.schemaVersion === 5) ensure(Array.isArray(snapshot.seriesCycles) && snapshot.seriesCycles.length <= 20000, "Invalid series cycles.");
   ensure(Array.isArray(snapshot.movies) && snapshot.movies.length <= 2000, "Invalid movie collection.");
   ensure(Array.isArray(snapshot.profiles) && snapshot.profiles.length === 2, "Missing family profiles.");
   ensure(Array.isArray(snapshot.watchHistory) && snapshot.watchHistory.length <= 20000, "Invalid viewing history.");
@@ -57,10 +58,24 @@ export function validateBackup(snapshot) {
       && validDate(event.watchedAt) && event.watchedAt, "Invalid viewing event.");
     eventIds.add(event.id);
   }
+  const cycleIds = new Set();
+  const cycleMovies = new Map();
+  const openCycles = new Set();
+  for(const cycle of snapshot.seriesCycles||[]) {
+    ensure(validId(cycle.id) && !cycleIds.has(cycle.id) && movieIds.has(cycle.movieId),"Invalid cycle ID.");
+    cycleIds.add(cycle.id);cycleMovies.set(cycle.id,cycle.movieId);
+    ensure(typeof cycle.startedAt==="string" && /^\d{4}-\d{2}-\d{2}$/.test(cycle.startedAt),"Invalid cycle start.");
+    ensure(["watching","completed","stopped"].includes(cycle.outcome),"Invalid cycle outcome.");
+    if(cycle.outcome==="watching"){
+      ensure(cycle.endedAt==null && !openCycles.has(cycle.movieId),"Invalid active cycle.");
+      openCycles.add(cycle.movieId);
+    }else ensure(typeof cycle.endedAt==="string" && /^\d{4}-\d{2}-\d{2}$/.test(cycle.endedAt),"Invalid cycle end.");
+  }
   const seasonIds = new Set();
   for (const season of (snapshot.seasonViewings || [])) {
     ensure(validId(season.id) && !seasonIds.has(season.id) && movieIds.has(season.movieId), "Invalid season viewing ID.");
     seasonIds.add(season.id);
+    if(snapshot.schemaVersion === 5) ensure(cycleMovies.get(season.cycleId)===season.movieId,"Orphan cycle season.");
     ensure(Number.isInteger(season.seasonNumber) && season.seasonNumber >= 1 && season.seasonNumber <= 200,
       "Invalid season number.");
     ensure(typeof season.startedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(season.startedAt) &&

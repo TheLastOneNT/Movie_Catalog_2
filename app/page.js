@@ -204,16 +204,51 @@ async function optimizePoster(file) {
   }
 }
 
-function ViewingDateField({value,onChange,label,disabled=false,max}) {
-  const locale = label && /date|watched|view/i.test(label) ? "en-US" : "ru-RU";
-  const dateText=value ? new Intl.DateTimeFormat(locale,{
-    year:"numeric",month:"short",day:"numeric",timeZone:"UTC"
-  }).format(new Date(`${value.slice(0,10)}T12:00:00Z`)) : "—";
-  return <span className={disabled?"viewingDateField disabled":"viewingDateField"}>
-    <span className="viewingDateFieldText">{dateText}</span><Icon name="calendar" size={18}/>
-    <input type="date" aria-label={label} value={value} disabled={disabled} max={max}
-      onChange={(event)=>onChange(event.target.value)}/>
-  </span>;
+// One consistent calendar for the add form and the movie details.
+function ViewingDateField({value,onChange,label,disabled=false,max,language="ru"}) {
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(()=>(value||todayLocal()).slice(0,7));
+  const en=language==="en",locale=en?"en-US":"ru-RU";
+  const year=Number(month.slice(0,4)),monthIndex=Number(month.slice(5,7))-1;
+  const firstWeekday=(new Date(Date.UTC(year,monthIndex,1)).getUTCDay()+6)%7;
+  const monthDays=new Date(Date.UTC(year,monthIndex+1,0)).getUTCDate();
+  const cells=Array.from({length:Math.ceil((firstWeekday+monthDays)/7)*7},(_,i)=>{
+    const day=i-firstWeekday+1;return day>=1&&day<=monthDays?day:null;
+  });
+  const iso=(day)=>`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  const navigate=(offset)=>{
+    const date=new Date(Date.UTC(year,monthIndex+offset,1));
+    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
+  };
+  const pretty=value?new Intl.DateTimeFormat(locale,{year:"numeric",month:"short",day:"numeric",timeZone:"UTC"})
+    .format(new Date(`${value.slice(0,10)}T12:00:00Z`)):(en?"Choose date":"Выбрать дату");
+  const header=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"})
+    .format(new Date(Date.UTC(year,monthIndex,1)));
+  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  return <div className={disabled?"viewingDayField disabled":"viewingDayField"}>
+    <button type="button" className="seasonRangeTrigger" disabled={disabled} aria-expanded={open}
+      onClick={()=>{if(!open)setMonth((value||todayLocal()).slice(0,7));setOpen(prev=>!prev);}}>
+      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty}</span>
+    </button>
+    {open&&!disabled&&<div className="seasonCalendar viewingDayCalendar" role="group" aria-label={label}>
+      <div className="seasonCalendarHead">
+        <button type="button" onClick={()=>navigate(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
+        <strong>{header}</strong>
+        <button type="button" onClick={()=>navigate(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
+      </div>
+      <div className="seasonCalendarGrid">
+        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
+        {cells.map((day,i)=>day?<button key={i} type="button"
+          className={`seasonCalendarDay ${iso(day)===value?"start":""}`}
+          disabled={Boolean(max&&iso(day)>max)} aria-pressed={iso(day)===value}
+          onClick={()=>{onChange(iso(day));setOpen(false);}}>{day}</button>:<span key={i}/>)}
+      </div>
+      <div className="seasonCalendarActions">
+        <button type="button" onClick={()=>{onChange(todayLocal());setOpen(false);}}>{en?"Today":"Сегодня"}</button>
+        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
+      </div>
+    </div>}
+  </div>;
 }
 
 function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
@@ -222,11 +257,11 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     titleEn: "", descriptionEn: "",
     category: "movies",
     releaseYear: "",
-    status: "unwatched",
+    status: "watchlist",
     rating: null,
     lastWatchedAt: "",
     description: "",
-    wantToWatch: false,
+    wantToWatch: true,
   };
   const [form, setForm] = useState(initialMovie ? {
     title: initialMovie.title || "", titleEn: initialMovie.titleEn || "", descriptionEn: initialMovie.descriptionEn || "", category: initialMovie.category,
@@ -255,7 +290,8 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   const selectTmdb = (match) => {
     setForm((current) => ({ ...current, title: match.title || current.title,
       titleEn: match.titleEn || "", description: match.description || "", descriptionEn: match.descriptionEn || "",
-      releaseYear: match.releaseYear || "", category: match.category || current.category }));
+      releaseYear: match.releaseYear || "", category: match.category || current.category,
+      ...(match.category==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
     setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
   };
   const [preview, setPreview] = useState("");
@@ -273,12 +309,18 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   }, [poster]);
 
   const update = (field,value)=>setForm(current=>({...current,[field]:value,
+    ...(field==="category"&&value==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
     ...(field==="status"?{wantToWatch:value==="watchlist",
       rating:value==="watched"?current.rating:null,
       lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):""}:{}),
   }));
   const submit = async (event) => {
     event.preventDefault();
+    if(!form.title.trim()){setError(labels.locale==="en-US"?"Enter a title.":"Укажите название.");return;}
+    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null)){
+      setError(labels.locale==="en-US"?"Choose viewing date and rating.":"Укажите дату просмотра и оценку.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -330,16 +372,18 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
             {!initialMovie && <label>
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
-                {statusOrder.map((item) => <option key={item} value={item}>{labels.catalog[item]}</option>)}
                 <option value="watchlist">{labels.family.watchlist}</option>
+                {form.category!=="series"&&<option value="watched">{labels.catalog.watched}</option>}
               </select>
             </label>}
-            {!initialMovie && <label>
-              <span>{labels.addMovie.watchedAt}</span>
-              <ViewingDateField disabled={form.status !== "watched"} value={form.lastWatchedAt} label={labels.addMovie.watchedAt} onChange={(value) => update("lastWatchedAt", value)} />
-            </label>}
+            {!initialMovie && form.status==="watched" && <div className="addViewingDate">
+              <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
+              <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
+                language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
+                onChange={(value)=>update("lastWatchedAt",value)}/>
+            </div>}
             {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
-              <span>{labels.addMovie.rating}</span>
+              <span>{labels.addMovie.rating} *</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
             <label className="wideField">
@@ -360,7 +404,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </label>
 
           {error && <p className="formError" role="alert">{error}</p>}
-          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim()}>
+          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null))}>
             {submitting ? <span className="spinner small" /> : <Icon name="plus" size={18} />}
             {submitting ? labels.addMovie.submitting : initialMovie ? labels.family.save : labels.addMovie.submit}
           </button>
@@ -435,104 +479,179 @@ function SeasonRangeCalendar({start, end, onChange, language}) {
 }
 
 function SeasonTracker({ movie, language, onMovieChanged }) {
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [seasonNumber, setSeasonNumber] = useState(1);
-  const [startedAt, setStartedAt] = useState(todayLocal);
-  const [finishedAt, setFinishedAt] = useState("");
-  const [rating, setRating] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [pendingSeasonDelete, setPendingSeasonDelete] = useState(null);
-  const en = language === "en";
-  const refresh = useCallback(async () => {
+  const en=language==="en";
+  const [cycles,setCycles]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  const [seasonNumber,setSeasonNumber]=useState(1);
+  const [startedAt,setStartedAt]=useState(todayLocal);
+  const [finishedAt,setFinishedAt]=useState("");
+  const [rating,setRating]=useState(null);
+  const [editingId,setEditingId]=useState(null);
+  const [editingCycleId,setEditingCycleId]=useState(null);
+  const [pendingSeasonDelete,setPendingSeasonDelete]=useState(null);
+  const [pendingClose,setPendingClose]=useState(null);
+  const active=cycles.find(cycle=>cycle.outcome==="watching")||null;
+  const reset=()=>{
+    setEditingId(null);setEditingCycleId(null);setSeasonNumber(1);
+    setStartedAt(todayLocal());setFinishedAt("");setRating(null);
+  };
+  const refresh=useCallback(async()=>{
     setLoading(true);
-    try {
-      const response = await fetch(`/api/movies/${movie.id}/seasons`, {credentials:"same-origin"});
-      if (!response.ok) throw new Error(en ? "Could not load seasons" : "Не удалось загрузить сезоны");
-      const data = await response.json();
-      setEntries(data.seasons || []);
-      setError("");
-    } catch(err) { setError(err.message); }
-    finally { setLoading(false); }
-  },[movie.id, en]);
-  useEffect(() => { refresh(); },[refresh]);
-  const reset = () => {setEditingId(null);setSeasonNumber(1);setStartedAt(todayLocal());setFinishedAt("");setRating(null);};
-  const submit = async (event) => {
+    try{
+      const response=await fetch(`/api/movies/${movie.id}/cycles`,{credentials:"same-origin"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Failed to load viewing cycles");
+      setCycles(data.cycles||[]);setError("");
+    }catch(err){setError(err.message);}
+    finally{setLoading(false);}
+  },[movie.id]);
+  useEffect(()=>{refresh();},[refresh]);
+  const execute=async(url,body,success)=>{
+    setSaving(true);setError("");
+    try{
+      const response=await fetch(url,{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+        body:JSON.stringify(body)});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to save changes");
+      setCycles(data.cycles||[]);if(data.movie)onMovieChanged(data.movie);
+      success?.();
+    }catch(err){setError(err.message);}
+    finally{setSaving(false);}
+  };
+  const createCycle=()=>execute(`/api/movies/${movie.id}/cycles`,{},reset);
+  const closeCycle=(cycleId,outcome)=>execute(`/api/movies/${movie.id}/cycles/${cycleId}/close`,
+    {outcome},()=>{setPendingClose(null);reset();});
+  const cancelEmptyCycle=async(cycleId)=>{
+    setSaving(true);setError("");
+    try{
+      const response=await fetch(`/api/movies/${movie.id}/cycles/${cycleId}`,{
+        method:"DELETE",credentials:"same-origin"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Cannot cancel viewing cycle");
+      setCycles(data.cycles||[]);reset();
+    }catch(err){setError(err.message);}
+    finally{setSaving(false);}
+  };
+  const submit=(event)=>{
     event.preventDefault();
-    if (finishedAt && finishedAt < startedAt) {
-      setError(en ? "End date cannot precede the start" : "Дата завершения раньше даты начала");return;
-    }
-    setSaving(true);setError("");
-    try {
-      const response = await fetch(`/api/movies/${movie.id}/seasons`, {
-        method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
-        body:JSON.stringify({id:editingId,seasonNumber,startedAt,finishedAt:finishedAt || null,rating:finishedAt ? rating : null}),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to save season");
-      setEntries(data.seasons);
-      onMovieChanged(data.movie);
-      reset();
-    } catch(err) {setError(err.message);}
-    finally {setSaving(false);}
+    if(!startedAt){setError(en?"Choose a start date.":"Выберите дату начала.");return;}
+    if(finishedAt&&finishedAt<startedAt){setError(en?"End cannot precede start.":"Дата окончания раньше даты начала.");return;}
+    if(finishedAt&&rating==null){setError(en?"Rate this finished season.":"Поставьте оценку завершённому сезону.");return;}
+    if(!finishedAt&&rating!=null){setError(en?"Finish the season to rate it.":"Для оценки сначала завершите сезон.");return;}
+    const cycleId=editingCycleId||active?.id;
+    if(!cycleId){setError(en?"Start a viewing cycle first.":"Сначала начните цикл просмотра.");return;}
+    execute(`/api/movies/${movie.id}/seasons`,
+      {id:editingId,cycleId,seasonNumber,startedAt,finishedAt:finishedAt||null,rating:finishedAt?rating:null},reset);
   };
-  const remove = async (entryId) => {
+  const remove=async(entryId)=>{
     setSaving(true);setError("");
-    try {
-      const response = await fetch(`/api/movies/${movie.id}/seasons/${entryId}`,{method:"DELETE",credentials:"same-origin"});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to delete");
-      setEntries(data.seasons);onMovieChanged(data.movie);
-    } catch(err) {setError(err.message);}
-    finally {setSaving(false);}
+    try{
+      const response=await fetch(`/api/movies/${movie.id}/seasons/${entryId}`,{method:"DELETE",credentials:"same-origin"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Unable to delete viewing");
+      setCycles(data.cycles||[]);if(data.movie)onMovieChanged(data.movie);
+      setPendingSeasonDelete(null);
+    }catch(err){setError(err.message);}
+    finally{setSaving(false);}
   };
-  return <div className="seasonTracker">
-    <h3>{en ? "Season viewing diary" : "Дневник просмотра сезонов"}</h3>
-    <p>{en ? "Log the period you watched each season. Rewatches are separate entries." : "Укажи период просмотра сезона. При пересмотре добавь новую запись."}</p>
-    {loading ? <p>…</p> : entries.length > 0 && <ul className="seasonEntries">
-      {entries.map((entry) => <li key={entry.id}>
-        <div className="seasonEntryTop">
-          <div className="seasonEntryInfo"><strong>{en ? "Season" : "Сезон"} {entry.seasonNumber}</strong>
-            <span className="seasonEntryDates">{entry.startedAt}{entry.finishedAt ? ` — ${entry.finishedAt}` : (en ? " · watching" : " · смотрим")}</span>
+  const edit=(entry,cycle)=>{
+    setEditingId(entry.id);setEditingCycleId(cycle.id);setSeasonNumber(entry.seasonNumber);
+    setStartedAt(entry.startedAt);setFinishedAt(entry.finishedAt||"");setRating(entry.rating);
+  };
+  const label=(cycle)=>{
+    if(cycle.outcome==="watching")return en?"Currently watching":"Смотрим сейчас";
+    return cycle.outcome==="completed"?(en?"Finished":"Досмотрели"):(en?"Stopped watching":"Прекратили смотреть");
+  };
+  const prettyDate=(value)=>value?new Intl.DateTimeFormat(en?"en-US":"ru-RU",
+    {day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(`${value.slice(0,10)}T12:00:00Z`)):"—";
+  return <section className="seasonTracker">
+    <div className="seriesDiaryHeader">
+      <h3>{en?"Series viewing diary":"Дневник сериала"}</h3>
+      <p>{en?"Each rewatch is a separate cycle. The headline rating changes when a cycle ends.":
+        "Каждый пересмотр — отдельный цикл. Общая оценка обновляется после завершения цикла."}</p>
+    </div>
+    {loading&&<p aria-live="polite">{en?"Loading…":"Загрузка…"}</p>}
+    {!loading&&!cycles.length&&<p className="seriesEmptyCycle">{en?
+      "No viewing cycles yet. Start one to record your first season.":
+      "Просмотров пока нет. Начните цикл, чтобы записать первый сезон."}</p>}
+    <div className="seriesCycles">
+      {cycles.map((cycle,index)=><section className="seriesCycle" key={cycle.id}>
+        <header className="seriesCycleHeader">
+          <div><span className="seriesCycleNumber">{en?"Viewing cycle":"Цикл просмотра"} {cycles.length-index}</span>
+            <strong>{label(cycle)}</strong>
+            <small>{prettyDate(cycle.startedAt)}{cycle.endedAt?` — ${prettyDate(cycle.endedAt)}`:""}</small>
           </div>
-          {entry.rating != null && <span className="seasonRating">★ {entry.rating}/5</span>}
-        </div>
-        <div className="seasonActions">
-          <button type="button" disabled={saving} onClick={()=>{
-            setEditingId(entry.id);setSeasonNumber(entry.seasonNumber);setStartedAt(entry.startedAt);
-            setFinishedAt(entry.finishedAt || "");setRating(entry.rating);
-          }}>{en ? "Edit" : "Изменить"}</button>
-          <button type="button" disabled={saving} onClick={()=>setPendingSeasonDelete(entry.id)}>{en ? "Delete" : "Удалить"}</button>
-        </div>
-      </li>)}
-    </ul>}
-    {pendingSeasonDelete !== null && <div className="seasonDeletePrompt" role="alertdialog" aria-label={en ? "Confirm deletion" : "Подтверждение удаления"}>
-      <strong>{en ? "Delete this season viewing?" : "Удалить запись просмотра сезона?"}</strong>
-      <div className="seasonActions">
-        <button type="button" onClick={()=>setPendingSeasonDelete(null)}>{en ? "Cancel" : "Отмена"}</button>
-        <button type="button" disabled={saving} onClick={async()=>{const id=pendingSeasonDelete;setPendingSeasonDelete(null);await remove(id);}}>{en ? "Delete" : "Удалить"}</button>
-      </div>
-    </div>}
-    <form className="seasonForm" onSubmit={submit}>
-      <label className="seasonSelectField"><span className="seasonFieldCaption">{en ? "Season" : "Сезон"}</span>
-        <select required value={seasonNumber} onChange={(event)=>setSeasonNumber(Number(event.target.value))}>
-          {Array.from({length:30},(_,index)=>index+1).map(number=><option key={number} value={number}>{en ? `Season ${number}` : `Сезон ${number}`}</option>)}
+          <div className="seriesCycleScore">{cycle.average==null?"—":`★ ${Number(cycle.average).toLocaleString(en?"en-US":"ru-RU",{maximumFractionDigits:1})}/5`}</div>
+        </header>
+        <ul className="seasonEntries">
+          {cycle.seasons.map(entry=><li key={entry.id}>
+            <div className="seasonEntryTop">
+              <div className="seasonEntryInfo"><strong>{en?"Season":"Сезон"} {entry.seasonNumber}</strong>
+                <span className="seasonEntryDates">{prettyDate(entry.startedAt)}
+                  {entry.finishedAt?` — ${prettyDate(entry.finishedAt)}`:
+                    cycle.outcome==="watching"?(en?" · in progress":" · в процессе"):(en?" · not finished":" · не закончили")}</span>
+              </div>
+              {entry.rating!=null&&<span className="seasonRating">★ {entry.rating}/5</span>}
+            </div>
+            <div className="seasonActions">
+              <button type="button" disabled={saving} onClick={()=>edit(entry,cycle)}>{en?"Edit":"Изменить"}</button>
+              <button type="button" disabled={saving} onClick={()=>setPendingSeasonDelete(entry.id)}>{en?"Delete":"Удалить"}</button>
+            </div>
+            {pendingSeasonDelete===entry.id&&<div className="seasonDeletePrompt" role="group">
+              <strong>{en?"Delete this season record?":"Удалить запись сезона?"}</strong>
+              <div className="seasonActions"><button type="button" onClick={()=>setPendingSeasonDelete(null)}>{en?"Cancel":"Отмена"}</button>
+                <button type="button" disabled={saving} onClick={()=>remove(entry.id)}>{en?"Delete":"Удалить"}</button></div>
+            </div>}
+          </li>)}
+        </ul>
+        {cycle.outcome==="watching"&&<div className="seriesCycleFinish">
+          <p>{en?"End this viewing cycle to publish its average rating. Unwatched seasons won't be included.":
+            "Завершите цикл, чтобы пересчитать общую оценку. Непросмотренные сезоны не учитываются."}</p>
+          {pendingClose===cycle.id?<div className="seriesCycleFinishConfirm">
+            <button type="button" onClick={()=>setPendingClose(null)}>{en?"Cancel":"Отмена"}</button>
+            <button type="button" disabled={saving||!cycle.ratedSeasons||cycle.seasons.some(item=>!item.finishedAt)}
+              onClick={()=>closeCycle(cycle.id,"completed")}>{en?"Finished series":"Досмотрели"}</button>
+            <button type="button" disabled={saving||!cycle.ratedSeasons}
+              onClick={()=>closeCycle(cycle.id,"stopped")}>{en?"Stopped early":"Прекратили смотреть"}</button>
+          </div>:<button type="button" className="seriesCycleEndButton" disabled={saving||!cycle.ratedSeasons}
+            onClick={()=>setPendingClose(cycle.id)}>{en?"End viewing cycle":"Завершить цикл просмотра"}</button>}
+          {!cycle.ratedSeasons&&<small>{en?"Rate at least one finished season first.":"Сначала завершите и оцените хотя бы один сезон."}</small>}
+          {cycle.seasons.some(item=>!item.finishedAt)&&<small>{en?
+            "Finish unfinished seasons to mark the series completed. You can stop watching at any time.":
+            "Чтобы отметить «Досмотрели», закончите незавершённые сезоны. Для прерванного просмотра выберите «Прекратили смотреть»."}</small>}
+          {cycle.seasons.length===0&&<button type="button" className="seriesCancelEmptyCycle"
+            disabled={saving} onClick={()=>cancelEmptyCycle(cycle.id)}>{en?"Cancel empty cycle":"Отменить пустой цикл"}</button>}
+        </div>}
+      </section>)}
+    </div>
+    {!loading&&!active&&!editingId&&<button type="button" className="seriesNewCycleButton" disabled={saving}
+      onClick={createCycle}>{en?"+ Start a viewing cycle":"+ Начать новый цикл просмотра"}</button>}
+    {(active||editingId)&&<form className="seasonForm" onSubmit={submit} noValidate>
+      <h4 className="seasonFormTitle">{editingId?(en?"Edit season":"Изменить просмотр сезона"):
+        (en?"Add season to current cycle":"Добавить сезон в текущий цикл")}</h4>
+      <label className="seasonSelectField"><span className="seasonFieldCaption">{en?"Season":"Сезон"}</span>
+        <select value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}>
+          {Array.from({length:30},(_,i)=>i+1).map(number=><option key={number} value={number}>
+            {en?`Season ${number}`:`Сезон ${number}`}</option>)}
         </select>
       </label>
       <SeasonRangeCalendar language={language} start={startedAt} end={finishedAt}
         onChange={(start,end)=>{setStartedAt(start);setFinishedAt(end);if(!end)setRating(null);}} />
-      {finishedAt && <div className="seasonFormRating"><span>{en ? "Rating for this viewing" : "Оценка этого просмотра"}</span>
-        <Stars value={rating || 0} onChange={setRating} label={en ? "Season rating" : "Оценка сезона"} />
+      {finishedAt&&<div className="seasonFormRating"><span>{en?"Season rating *":"Оценка сезона *"}</span>
+        <Stars value={rating||0} onChange={setRating} label={en?"Season rating":"Оценка сезона"} />
       </div>}
-      {error && <p className="formError" role="alert">{error}</p>}
-      <div className="seasonActions">
-        <button type="submit" className="primaryButton" disabled={saving}>{saving ? "…" : editingId ? (en ? "Save changes" : "Сохранить изменения") : (en ? "Log season" : "Записать сезон")}</button>
-        {editingId && <button type="button" onClick={reset}>{en ? "Cancel" : "Отмена"}</button>}
+      {error&&<p className="formError" role="alert">{error}</p>}
+      <div className="seasonActions"><button type="submit" className="primaryButton"
+        disabled={saving||!startedAt||(Boolean(finishedAt)&&rating==null)}>
+        {saving?"…":editingId?(en?"Save changes":"Сохранить изменения"):(en?"Save season":"Записать сезон")}
+        </button>
+        {editingId&&<button type="button" onClick={reset}>{en?"Cancel":"Отмена"}</button>}
       </div>
-    </form>
-  </div>;
+    </form>}
+    {!loading&&!active&&!editingId&&error&&<p className="formError" role="alert">{error}</p>}
+  </section>;
 }
 
 function PosterReviewPanel({ language, movies, onClose, onApplied }) {
@@ -1430,7 +1549,7 @@ export default function Home() {
                 : <>
                   <div className="watchRecorder">
                     <h3>{t.family.recordWatch}</h3>
-                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} max={todayLocal()} onChange={setWatchDate} /></label>
+                    <label className="watchDate"><span>{t.modal.date}</span><ViewingDateField label={t.modal.date} value={watchDate} language={language} max={todayLocal()} onChange={setWatchDate} /></label>
                     <div className="watchRatingInput">
                       <span>{language === "en" ? "Rating for this viewing (optional)" : "Оценка этого просмотра (необязательно)"}</span>
                       <Stars value={watchRating || 0} onChange={setWatchRating} label={language === "en" ? "Viewing rating" : "Оценка просмотра"} />
