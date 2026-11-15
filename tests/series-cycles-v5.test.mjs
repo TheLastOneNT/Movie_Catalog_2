@@ -43,7 +43,7 @@ test("UI groups dates per viewing cycle and offers two stop outcomes",()=>{
 });
 test("one calendar widget serves both add and detail, with required add score",()=>{
  assert.match(ui,/function ViewingDateField/);
- assert.match(ui,/className="seasonCalendar viewingDayCalendar"/);
+ assert.match(ui,/<input type="date" aria-label=\{label\}/);
  assert.match(ui,/Set the viewing date and rating before saving|Choose viewing date and rating/);
  assert.match(ui,/form.status==="watched" && \(!form.lastWatchedAt \|\| form.rating==null\)/);
  assert.match(css,/\.posterLightboxContent img \{ width:100%; max-width:100%; height:100%; max-height:calc\(100dvh - 58px\)/);
