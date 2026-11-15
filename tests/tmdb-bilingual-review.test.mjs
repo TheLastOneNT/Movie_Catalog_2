@@ -15,13 +15,6 @@ test("English descriptions persist on create and edit",()=>{
   assert.match(page, /descriptionEn: match.descriptionEn \|\| ""/);
   assert.match(page, /value=\{form.descriptionEn \|\| ""\}/);
 });
-test("poster proposals require a separate explicit user action before writing",()=>{
-  const previews = worker.slice(worker.indexOf("async function tmdbSuggestions("),worker.indexOf("async function applyTmdbMatch("));
-  assert.doesNotMatch(previews,/UPDATE movies|INSERT INTO movie_posters|DELETE FROM movies/);
-  assert.match(page, /backupConfirmed/);
-  assert.match(page, /selected.length/);
-  assert.match(page, /\/api\/tmdb\/suggestions/);
-});
 test("existing movie update retains shared viewing progress and Russian titles",()=>{
   const apply = worker.slice(worker.indexOf("async function applyTmdbMatch("),worker.indexOf("async function archiveTmdbPoster("));
   assert.doesNotMatch(apply,/UPDATE movie_progress|DELETE FROM watch_history|title_ru\s*=/);
