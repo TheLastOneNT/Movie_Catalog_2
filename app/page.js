@@ -918,7 +918,15 @@ export default function Home() {
       method: "PUT", credentials: "same-origin",
       headers: { "content-type": "application/json" }, body: JSON.stringify(form),
     });
-    if (!response.ok) throw new Error(t.sync.error);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        throw new Error(language === "en"
+          ? `Already in your library: "${payload.duplicateTitle || form.title}". Choose a different title or year.`
+          : `Уже есть в коллекции: «${payload.duplicateTitle || form.title}». Выберите другое название или год.`);
+      }
+      throw new Error(payload.error || t.sync.error);
+    }
     if (posterFile) {
       const poster = await optimizePoster(posterFile);
       const upload = await fetch(`/api/movies/${movieId}/poster`, {
