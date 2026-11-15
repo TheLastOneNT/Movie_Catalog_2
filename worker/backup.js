@@ -20,6 +20,16 @@ export function validateBackup(snapshot) {
     ensure(Array.isArray(snapshot.ratingChanges) && snapshot.ratingChanges.length <= 40000, "Invalid rating history.");
   }
   if(snapshot.schemaVersion === 5) ensure(Array.isArray(snapshot.seriesCycles) && snapshot.seriesCycles.length <= 20000, "Invalid series cycles.");
+  if (snapshot.dismissedCatalogAlerts !== undefined) {
+    ensure(Array.isArray(snapshot.dismissedCatalogAlerts) && snapshot.dismissedCatalogAlerts.length <= 1000,
+      "Invalid dismissed catalog alerts.");
+    const keys = new Set();
+    for (const key of snapshot.dismissedCatalogAlerts) {
+      ensure(typeof key === "string" && key.length >= 1 && key.length <= 4096 && !keys.has(key),
+        "Invalid or duplicate dismissed catalog alert key.");
+      keys.add(key);
+    }
+  }
   ensure(Array.isArray(snapshot.movies) && snapshot.movies.length <= 2000, "Invalid movie collection.");
   ensure(Array.isArray(snapshot.profiles) && snapshot.profiles.length === 2, "Missing family profiles.");
   ensure(Array.isArray(snapshot.watchHistory) && snapshot.watchHistory.length <= 20000, "Invalid viewing history.");

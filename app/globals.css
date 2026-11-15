@@ -744,3 +744,31 @@ img { display: block; max-width: 100%; }
 @media(max-width:680px) {
   .addViewingDate,.watchDate,.viewingDateField { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
 }
+
+
+/* Catalog notice center: clearly secondary to the collection's primary metrics. */
+.collectionInfoDialog { max-height: min(88dvh, 900px); overflow-y: auto; overscroll-behavior: contain; }
+.libraryAlerts { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.libraryAlerts h3 { margin: 0 0 12px; display: flex; align-items: center; gap: 9px; color: #f0ece5; font-size: 15px; font-weight: 650; }
+.libraryAlertCount { min-width: 22px; min-height: 22px; display: inline-grid; place-items: center; padding: 2px 6px; border-radius: 20px; background: rgba(214,173,99,.18); color: var(--gold-bright); font-size: 12px; }
+.libraryAlertsEmpty { margin: 0; color: #aaa4a5; font-size: 13px; }
+.libraryAlertList { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.libraryAlert { padding: 13px; border: 1px solid rgba(214,173,99,.3); border-radius: 7px; background: #1d1a1a; }
+.libraryAlert > p { margin: 0 0 12px; color: #ded4c4; font-size: 12px; line-height: 1.55; }
+.libraryAlertMovies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.libraryAlertMovie { display: flex; align-items: center; min-width: 0; min-height: 66px; gap: 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; padding: 7px; background: #101013; color: #efeae5; text-align: left; cursor: pointer; }
+.libraryAlertMovie:hover, .libraryAlertMovie:focus-visible { border-color: var(--gold); }
+.libraryAlertMovie img { width: 34px; height: 49px; flex: 0 0 auto; object-fit: cover; border-radius: 3px; background: #242229; }
+.libraryAlertMovie span { overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.libraryAlertDismiss { display: block; margin: 10px 0 0 auto; border: 0; background: transparent; color: var(--gold-bright); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.cardRatingBadge.watchlist { min-width: 0; padding: 6px 8px; background: rgba(64,43,19,.92); border-color: rgba(244,191,95,.9); color: #ffe0a1; letter-spacing: .01em; }
+.listRatingLabel.watchlist { color: #f3c878; }
+@media (max-width: 420px) {
+  .libraryAlertMovies { gap: 6px; }
+  .libraryAlertMovie { gap: 6px; padding: 5px; }
+  .libraryAlertMovie img { width: 28px; height: 43px; }
+  .libraryAlertMovie span { font-size: 11px; }
+}
+
+.collectionInfoButton { position: relative; }
+.collectionInfoAlertDot { position: absolute; right: -3px; top: -3px; width: 10px; height: 10px; border: 2px solid #151417; border-radius: 50%; background: #ecad47; box-sizing: content-box; }

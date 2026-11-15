@@ -1,6 +1,7 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 import { averageRatedSeasons } from "../lib/series-cycles.js";
 import { findDuplicateTitle } from "../lib/title-duplicates.js";
+import { writeWeeklyBackup } from "./scheduled-backup.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
@@ -610,6 +611,22 @@ async function resetProgress(env, movieId) {
   return json({ progress: mapProgress(null) });
 }
 
+async function listDismissedCatalogAlerts(env) {
+  const results = await env.DB.prepare("SELECT alert_key AS alertKey FROM dismissed_catalog_alerts ORDER BY dismissed_at DESC LIMIT 1000").all();
+  return (results.results || []).map((row) => row.alertKey);
+}
+
+async function dismissCatalogAlert(request, env) {
+  const input = await readJson(request);
+  if (typeof input.key !== "string" || input.key.length < 1 || input.key.length > 4096) {
+    throw new ValidationError("Invalid catalog alert key.");
+  }
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO dismissed_catalog_alerts(alert_key) VALUES (?)"
+  ).bind(input.key).run();
+  return json({dismissed:true});
+}
+
 async function exportData(env) {
   const [catalog, history] = await Promise.all([
     listCatalog(env),
@@ -630,6 +647,7 @@ async function exportData(env) {
     seriesCycles: cycleEntries.results,
     seasonViewings: seasonEntries.results,
     ratingChanges: ratingRows.results,
+    dismissedCatalogAlerts: await listDismissedCatalogAlerts(env),
     exportedAt: new Date().toISOString(),
     movies: catalog,
     profiles: await listProfiles(env),
@@ -1016,9 +1034,12 @@ async function readBackup(request) {
 async function restoreBackup(env, snapshot) {
   // One atomic D1 transaction. No existing rows are deleted until full validation passes.
   const statements = [
-    "DELETE FROM rating_changes", "DELETE FROM season_viewings", "DELETE FROM series_cycles", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
+    "DELETE FROM dismissed_catalog_alerts", "DELETE FROM rating_changes", "DELETE FROM season_viewings", "DELETE FROM series_cycles", "DELETE FROM watch_attendance", "DELETE FROM watch_history", "DELETE FROM member_progress",
     "DELETE FROM movie_progress", "DELETE FROM movie_posters", "DELETE FROM movies",
   ].map((sql) => env.DB.prepare(sql));
+  for (const key of snapshot.dismissedCatalogAlerts || []) {
+    statements.push(env.DB.prepare("INSERT INTO dismissed_catalog_alerts(alert_key) VALUES (?)").bind(key));
+  }
   for (const person of snapshot.profiles) {
     statements.push(env.DB.prepare("UPDATE family_profiles SET display_name = ? WHERE id = ?").bind(person.name.trim(), person.id));
   }
@@ -1135,6 +1156,10 @@ async function handleApi(request, env) {
     return json({ movies: await listCatalog(env), updatedAt: new Date().toISOString() });
   }
   if (url.pathname === "/api/profiles" && request.method === "GET") return json({ profiles: await listProfiles(env) });
+  if (url.pathname === "/api/catalog/alerts/dismissed" && request.method === "GET")
+    return json({keys:await listDismissedCatalogAlerts(env)});
+  if (url.pathname === "/api/catalog/alerts/dismissed" && request.method === "POST")
+    return dismissCatalogAlert(request,env);
   if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
   if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
   const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
@@ -1219,6 +1244,13 @@ async function handleApi(request, env) {
 }
 
 export default {
+  async scheduled(controller, env) {
+    // Cron is UTC. If the storage binding is absent, fail visibly without touching D1.
+    const response = await exportData(env);
+    if (!response.ok) throw new Error("Could not generate the backup export.");
+    const report = await writeWeeklyBackup(env, async () => response.json(), new Date(controller.scheduledTime));
+    console.log("Verified weekly catalog backup", { bytes: report.bytes, retained: report.retained, removed: report.removed });
+  },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
