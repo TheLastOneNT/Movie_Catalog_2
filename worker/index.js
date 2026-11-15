@@ -1,6 +1,7 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 import { averageRatedSeasons } from "../lib/series-cycles.js";
 import { findDuplicateTitle } from "../lib/title-duplicates.js";
+import { writeWeeklyBackup } from "./scheduled-backup.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
 const SESSION_COOKIE = "movie_catalog_session";
@@ -1243,6 +1244,13 @@ async function handleApi(request, env) {
 }
 
 export default {
+  async scheduled(controller, env) {
+    // Cron is UTC. If the storage binding is absent, fail visibly without touching D1.
+    const response = await exportData(env);
+    if (!response.ok) throw new Error("Could not generate the backup export.");
+    const report = await writeWeeklyBackup(env, async () => response.json(), new Date(controller.scheduledTime));
+    console.log("Verified weekly catalog backup", { bytes: report.bytes, retained: report.retained, removed: report.removed });
+  },
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
