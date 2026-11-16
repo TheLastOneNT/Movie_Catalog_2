@@ -440,6 +440,73 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 
 // Purpose-built calendar: two taps choose a season's start and end. A single
 // selected start is a valid, unfinished viewing period.
+function TmdbGenreMatcher({movie,language,onMatched}) {
+  const en=language==="en";
+  const [query,setQuery]=useState(movie.title||"");
+  const [matches,setMatches]=useState([]);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const search=async()=>{
+    if(query.trim().length<2)return;
+    setBusy(true);setError("");setMatches([]);
+    try {
+      // Don't impose a year filter: a manually catalogued release year can be wrong.
+      const response=await fetch("/api/tmdb/search?q="+encodeURIComponent(query.trim()),{credentials:"same-origin"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"TMDB lookup failed");
+      const expected=movie.category==="series"?"tv":"movie";
+      const candidates=(data.results||[]).filter(item=>(item.mediaType|| (item.category==="series"?"tv":"movie"))===expected);
+      setMatches(candidates);
+      if(!candidates.length)setError(en?"No matching titles. Try the English title or TMDB ID (tmdb:123).":"Ничего не найдено. Попробуйте английское название или TMDB ID (tmdb:123).");
+    } catch(err) {setError(err.message);}
+    finally {setBusy(false);}
+  };
+  const choose=async(match)=>{
+    const title=match.title||match.titleEn||"";
+    const year=match.releaseYear||"?";
+    const prompt=en
+      ? `Link «${movie.title}» (${movie.releaseYear||"?"}) to TMDB: «${title}» (${year})? Only genres and TMDB ID will change.`
+      : `Сопоставить «${movie.title}» (${movie.releaseYear||"?"}) с TMDB: «${title}» (${year})? Изменятся только жанры и ID TMDB.`;
+    if(!window.confirm(prompt))return;
+    setBusy(true);setError("");
+    try{
+      const response=await fetch(`/api/movies/${movie.id}/tmdb-genres`,{
+        method:"POST",credentials:"same-origin",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({tmdbId:match.tmdbId||match.id,
+          mediaType:match.mediaType||(match.category==="series"?"tv":"movie")})
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"Could not save genres");
+      onMatched(data.movie);
+      setMatches([]);
+    }catch(err){setError(err.message);}
+    finally{setBusy(false);}
+  };
+  return <section className="tmdbGenreMatcher">
+    <h3>{en?"Genres not linked to TMDB":"Жанры не сопоставлены с TMDB"}</h3>
+    <p>{en?"Find this title in TMDB and pick the correct release. Your poster, rating, dates and descriptions will remain unchanged.":
+      "Найдите фильм в TMDB и выберите нужную версию. Постер, оценки, даты просмотров и описания сохранятся."}</p>
+    <div className="tmdbGenreMatcherSearch">
+      <input value={query} onChange={event=>setQuery(event.target.value)}
+        onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();search();}}}
+        aria-label={en?"Search TMDB title":"Поиск названия в TMDB"}/>
+      <button type="button" onClick={search} disabled={busy||query.trim().length<2}>
+        {busy?"…":en?"Search":"Найти"}
+      </button>
+    </div>
+    {error&&<p role="alert" className="formError">{error}</p>}
+    {matches.length>0&&<div className="tmdbGenreMatcherResults">
+      {matches.map(item=><button type="button" disabled={busy} key={`${item.mediaType||item.category}:${item.id}`}
+        onClick={()=>choose(item)}>
+        <img src={item.posterUrl||"/poster-placeholder.svg"} alt="" loading="lazy"/>
+        <span><strong>{item.title||item.titleEn}</strong>
+          <small>{item.titleEn&&item.titleEn!==item.title?`${item.titleEn} · `:""}${item.releaseYear||"?"} · TMDB ${item.id}</small></span>
+      </button>)}
+    </div>}
+  </section>;
+}
+
 function SeasonRangeCalendar({start, end, onChange, language}) {
   const en=language==="en";
   const locale=en?"en-US":"ru-RU";
@@ -1662,6 +1729,12 @@ export default function Home() {
               {!!normalizeGenreIds(selected.genreIds).length && <div className="movieGenreTags" aria-label={language==="en"?"Genres":"Жанры"}>
                 {normalizeGenreIds(selected.genreIds).map(id=><span key={id}>{genreName(id)}</span>)}
               </div>}
+              {!selected.tmdbId&&<TmdbGenreMatcher key={selected.id} movie={selected} language={language}
+                onMatched={updated=>{
+                  setMovies(current=>current.map(item=>item.id===updated.id?updated:item));
+                  setUnresolvedGenres(current=>current.filter(item=>item.id!==updated.id));
+                }}/>}
+
 
               <div className="familyRatings"><span>{selected.category === "series"
                 ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")

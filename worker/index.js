@@ -480,6 +480,26 @@ async function tmdbSuggestions(url, env) {
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM movies").first();
   return json({ candidates, offset, total: countRow.total });
 }
+async function matchTmdbGenresOnly(request, env, movieId) {
+  if (!env.TMDB_READ_TOKEN) return json({error:"TMDB is not configured."},503);
+  const input=await readJson(request);
+  if (!Number.isSafeInteger(input.tmdbId) || input.tmdbId <= 0 ||
+      !["movie","tv"].includes(input.mediaType))
+    throw new ValidationError("Invalid TMDB selection.");
+  const existing=await env.DB.prepare("SELECT id,category FROM movies WHERE id=?").bind(movieId).first();
+  if (!existing) return json({error:"Movie not found."},404);
+  if (tmdbMediaType(existing.category)!==input.mediaType)
+    throw new ValidationError("TMDB result has the wrong media type.");
+  const details=await tmdbDetails(env,input.mediaType,input.tmdbId);
+  const genreIds=details.genreIds.filter(id=>Number.isSafeInteger(id)&&id>0);
+  // User has explicitly chosen a TMDB result after reviewing candidate title/year.
+  // Never overwrite any other movie metadata, poster, viewing history, or ratings.
+  await env.DB.prepare(`UPDATE movies
+    SET tmdb_id=?,tmdb_media_type=?,genre_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    .bind(input.tmdbId,input.mediaType,JSON.stringify(genreIds),movieId).run();
+  return json({movie:await getCatalogMovie(env,movieId)});
+}
+
 async function applyTmdbMatch(request, env, movieId) {
   const input = await readJson(request);
   if (!Number.isSafeInteger(input.tmdbId) || input.tmdbId < 1 || !["movie","tv"].includes(input.mediaType)) throw new ValidationError("Invalid TMDB match.");
@@ -1287,6 +1307,9 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/tmdb/genres/unresolved" && request.method === "GET") return listUnresolvedTmdbGenres(env);
   if (url.pathname === "/api/tmdb/genres/backfill" && request.method === "POST") return backfillTmdbGenres(request, env);
   if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
+  const genreMatch=url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb-genres$/);
+  if (genreMatch && request.method==="POST")
+    return matchTmdbGenresOnly(request,env,Number(genreMatch[1]));
   const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
   if (tmdbApply && request.method === "POST") return applyTmdbMatch(request,env,Number(tmdbApply[1]));
   const profileMatch = url.pathname.match(/^\/api\/profiles\/(\d+)$/);

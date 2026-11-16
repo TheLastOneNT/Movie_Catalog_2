@@ -872,3 +872,20 @@ img { display: block; max-width: 100%; }
 @media (max-width:680px) {
   .toolbar .viewSwitch, .toolbar .sortDirectionToggle, .toolbar .resultCount { grid-row:5; }
 }
+
+
+/* Manual TMDB metadata reconciliation: no poster or historical data writes. */
+.tmdbGenreMatcher { margin:15px 0; padding:14px; border:1px solid rgba(214,173,99,.35); background:rgba(214,173,99,.05); border-radius:7px; }
+.tmdbGenreMatcher h3 { font-size:15px; margin:0 0 8px; }
+.tmdbGenreMatcher p { font-size:12px; line-height:1.5; color:#b9b4ad; margin:0 0 10px; }
+.tmdbGenreMatcherSearch { display:flex; gap:8px; }
+.tmdbGenreMatcherSearch input { flex:1; width:100%; min-width:0; min-height:43px; border:1px solid var(--line); background:#131217; color:#f3eee7; padding:0 10px; font-size:16px; }
+.tmdbGenreMatcherSearch button { min-height:43px; border:1px solid rgba(214,173,99,.6); background:#242025; color:#e9ca90; padding:0 14px; cursor:pointer; }
+.tmdbGenreMatcherSearch button:disabled { opacity:.5; cursor:default; }
+.tmdbGenreMatcherResults { display:grid; gap:7px; margin-top:12px; max-height:320px; overflow-y:auto; }
+.tmdbGenreMatcherResults button { display:flex; width:100%; min-width:0; align-items:center; gap:10px; text-align:left; padding:7px; border:1px solid #363036; background:#121115; color:#eae5db; cursor:pointer; }
+.tmdbGenreMatcherResults button:hover { border-color:#d0af76; }
+.tmdbGenreMatcherResults img { width:38px; height:57px; object-fit:cover; flex:0 0 auto; }
+.tmdbGenreMatcherResults span { display:flex; flex-direction:column; gap:5px; min-width:0; overflow-wrap:anywhere; }
+.tmdbGenreMatcherResults strong { font-size:13px; }
+.tmdbGenreMatcherResults small { color:#b7b0a8; font-size:11px; }
