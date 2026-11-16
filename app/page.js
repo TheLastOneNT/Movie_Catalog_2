@@ -237,13 +237,15 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     status: "watchlist",
     rating: null,
     lastWatchedAt: "",
+    startedAt: "",
+    seasonNumber: 1,
     description: "",
     wantToWatch: true,
   };
   const [form, setForm] = useState(initialMovie ? {
     title: initialMovie.title || "", titleEn: initialMovie.titleEn || "", descriptionEn: initialMovie.descriptionEn || "", category: initialMovie.category,
     releaseYear: initialMovie.releaseYear || "", status: initialMovie.progress.status, rating: initialMovie.progress.rating,
-    lastWatchedAt: initialMovie.progress.lastWatchedAt?.slice(0, 10) || "", description: initialMovie.description || "",
+    lastWatchedAt: initialMovie.progress.lastWatchedAt?.slice(0, 10) || "", startedAt:"",seasonNumber:1,description: initialMovie.description || "",
   } : initialForm);
   const [poster, setPoster] = useState(null);
   const [tmdbMatches, setTmdbMatches] = useState([]);
@@ -268,7 +270,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     setForm((current) => ({ ...current, title: match.title || current.title,
       titleEn: match.titleEn || "", description: match.description || "", descriptionEn: match.descriptionEn || "",
       releaseYear: match.releaseYear || "", category: match.category || current.category,
-      ...(match.category==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
+      ...(match.category==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
     setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
   };
   const [preview, setPreview] = useState("");
@@ -286,15 +288,16 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   }, [poster]);
 
   const update = (field,value)=>setForm(current=>({...current,[field]:value,
-    ...(field==="category"&&value==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
+    ...(field==="category"&&value==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
     ...(field==="status"?{wantToWatch:value==="watchlist",
       rating:value==="watched"?current.rating:null,
-      lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):""}:{}),
+      lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):"",
+      startedAt:value==="watched"?(current.startedAt||todayLocal()):""}:{}),
   }));
   const submit = async (event) => {
     event.preventDefault();
     if(!form.title.trim()){setError(labels.locale==="en-US"?"Enter a title.":"Укажите название.");return;}
-    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null)){
+    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null || (form.category==="series" && (!form.startedAt || form.lastWatchedAt<form.startedAt)))){
       setError(labels.locale==="en-US"?"Choose viewing date and rating.":"Укажите дату просмотра и оценку.");
       return;
     }
@@ -353,16 +356,29 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
                 <option value="watchlist">{labels.family.watchlist}</option>
-                {form.category!=="series"&&<option value="watched">{labels.catalog.watched}</option>}
+                <option value="watched">{labels.catalog.watched}</option>
               </select>
             </label>}
-            {!initialMovie && form.status==="watched" && <div className="addViewingDate">
-              <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
-              <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
-                language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
-                onChange={(value)=>update("lastWatchedAt",value)}/>
-            </div>}
-            {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
+            {!initialMovie && form.status==="watched" && (form.category==="series" ?
+              <div className="wideField addSeriesHistory">
+                <label><span>{labels.locale==="en-US"?"First viewed season":"Первый просмотренный сезон"}</span>
+                  <select value={form.seasonNumber} onChange={event=>update("seasonNumber",Number(event.target.value))}>
+                    {Array.from({length:30},(_,index)=>index+1).map(n=><option key={n} value={n}>{labels.locale==="en-US"?"Season":"Сезон"} {n}</option>)}
+                  </select></label>
+                <SeasonRangeCalendar language={labels.locale==="en-US"?"en":"ru"}
+                  start={form.startedAt} end={form.lastWatchedAt}
+                  onChange={(start,end)=>setForm(current=>({...current,startedAt:start,lastWatchedAt:end}))}/>
+                <small>{labels.locale==="en-US"
+                  ?"Record a completed season now. You can add the remaining seasons and later rewatches in the series card."
+                  :"Сейчас запишите один завершённый сезон. Остальные сезоны и пересмотры можно добавить в карточке сериала."}</small>
+              </div> :
+              <div className="addViewingDate">
+                <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
+                <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
+                  language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
+                  onChange={(value)=>update("lastWatchedAt",value)}/>
+              </div>)}
+            {!initialMovie && form.status === "watched" && <div className="addRating wideField">
               <span>{labels.addMovie.rating} *</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
@@ -384,7 +400,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </label>
 
           {error && <p className="formError" role="alert">{error}</p>}
-          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null))}>
+          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null || (form.category==="series" && (!form.startedAt || form.lastWatchedAt<form.startedAt))))}>
             {submitting ? <span className="spinner small" /> : <Icon name="plus" size={18} />}
             {submitting ? labels.addMovie.submitting : initialMovie ? labels.family.save : labels.addMovie.submit}
           </button>
@@ -1141,6 +1157,8 @@ export default function Home() {
         releaseYear: form.releaseYear || null,
         posterFromTmdb: posterFile ? null : tmdbPoster,
         lastWatchedAt: form.status === "watched" ? form.lastWatchedAt || null : null,
+        startedAt: form.category==="series" && form.status==="watched" ? form.startedAt : null,
+        seasonNumber: form.category==="series" && form.status==="watched" ? Number(form.seasonNumber) : null,
         status: form.status === "watched" ? "watched" : "unwatched",
         wantToWatch: form.status === "watchlist",
       }),
