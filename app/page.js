@@ -457,7 +457,12 @@ function TmdbGenreMatcher({movie,language,onMatched}) {
       const expected=movie.category==="series"?"tv":"movie";
       const candidates=(data.results||[]).filter(item=>(item.mediaType|| (item.category==="series"?"tv":"movie"))===expected);
       setMatches(candidates);
-      if(!candidates.length)setError(en?"No matching titles. Try the English title or TMDB ID (tmdb:123).":"Ничего не найдено. Попробуйте английское название или TMDB ID (tmdb:123).");
+      if(!candidates.length){
+        const otherTypeFound=(data.results||[]).length>0;
+        setError(otherTypeFound
+          ? (en?"This TMDB title exists, but its type differs from the catalog category. Check whether this entry should be in the Series tab.":"Запись найдена в TMDB, но её тип не совпадает с категорией в каталоге. Проверьте, не должен ли этот фильм находиться во вкладке «Сериалы».")
+          : (en?"No matching titles. Try the original title or a TMDB ID, e.g. tmdb:tv:64480.":"Ничего не найдено. Попробуйте оригинальное название или ID TMDB, например tmdb:tv:64480."));
+      }
     } catch(err) {setError(err.message);}
     finally {setBusy(false);}
   };
@@ -501,7 +506,7 @@ function TmdbGenreMatcher({movie,language,onMatched}) {
         onClick={()=>choose(item)}>
         <img src={item.posterUrl||"/poster-placeholder.svg"} alt="" loading="lazy"/>
         <span><strong>{item.title||item.titleEn}</strong>
-          <small>{item.titleEn&&item.titleEn!==item.title?`${item.titleEn} · `:""}${item.releaseYear||"?"} · TMDB ${item.id}</small></span>
+          <small>{item.titleEn&&item.titleEn!==item.title?`${item.titleEn} · `:""}{item.releaseYear||"?"} · TMDB {item.id}</small></span>
       </button>)}
     </div>}
   </section>;
