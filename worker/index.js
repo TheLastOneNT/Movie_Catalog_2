@@ -1149,10 +1149,11 @@ async function restoreBackup(env, snapshot) {
     const poster = movie.poster?.startsWith("/api/posters/") && !posterIds.has(movie.id) ? "/film-reel.png" : (movie.poster || "/film-reel.png");
     statements.push(env.DB.prepare(`
       INSERT INTO movies(id, category, title_ru, title_en, description_ru, description_en,
-        poster_path, release_year, collection_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        poster_path, release_year, collection_order, tmdb_id, tmdb_media_type, genre_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(movie.id, movie.category, movie.title, movie.titleEn || null, movie.description || null,
-      movie.descriptionEn || null, poster, movie.releaseYear ?? null, movie.collectionOrder));
+      movie.descriptionEn || null, poster, movie.releaseYear ?? null, movie.collectionOrder,
+      movie.tmdbId ?? null, movie.tmdbMediaType ?? null, JSON.stringify(movie.genreIds || [])));
     const p = movie.progress;
     statements.push(env.DB.prepare(`
       INSERT INTO movie_progress(movie_id, status, rating, is_favorite, last_watched_at, watch_count, notes, updated_at)
