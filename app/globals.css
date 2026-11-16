@@ -783,3 +783,16 @@ img { display: block; max-width: 100%; }
 .sortDirectionToggle { display:grid; place-items:center; min-width:43px; min-height:44px; border:1px solid rgba(214,173,99,.45); border-radius:6px; background:rgba(214,173,99,.1); color:var(--gold-bright); font-size:22px; cursor:pointer; }
 .sortDirectionToggle:hover { background:rgba(214,173,99,.24); }
 @media (max-width:390px) { .seasonCalendarJump select { max-width:111px; font-size:12px; } }
+
+
+/* TMDB genres: filter, compact detail tags and opt-in exact-match enrichment. */
+.movieGenreTags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 14px; }
+.movieGenreTags span { padding:5px 9px; border:1px solid rgba(214,173,99,.34); border-radius:14px; color:#e7d6ac; background:rgba(214,173,99,.08); font-size:12px; }
+.libraryGenreSync { margin-top:20px; padding:15px 0 4px; border-top:1px solid var(--line); }
+.libraryGenreSync h3 { font-size:15px; margin:0 0 10px; }
+.libraryGenreSync p { font-size:12px; line-height:1.55; color:#bcb8b7; margin:0 0 12px; }
+.libraryGenreSync button { width:100%; min-height:42px; padding:10px; border:1px solid rgba(214,173,99,.5); border-radius:5px; color:var(--gold-bright); background:rgba(214,173,99,.07); cursor:pointer; }
+.libraryGenreSync button:disabled { opacity:.55; cursor:default; }
+.addSeriesHistory { display:grid; gap:12px; border:1px solid rgba(214,173,99,.3); padding:13px; border-radius:6px; }
+.addSeriesHistory > label { display:grid; gap:7px; }
+.addSeriesHistory > small { color:#bbb4ac; line-height:1.5; }
