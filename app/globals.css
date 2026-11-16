@@ -854,3 +854,21 @@ img { display: block; max-width: 100%; }
 .libraryUnresolvedGenres li button strong { font-size:13px; font-weight:600; }
 .libraryUnresolvedGenres li button span { font-size:12px; color:#a5a1a0; }
 .libraryUnresolvedGenres li button:hover { border-color:#d7b77d; }
+
+/* Keep view mode, ascending/descending and result count on the SAME mobile row. */
+@media (max-width:680px) {
+  .toolbar { grid-template-columns:auto auto minmax(0,1fr); gap:8px; align-items:center; }
+  .toolbar .viewSwitch { grid-column:1; grid-row:auto; justify-self:start; }
+  .toolbar .sortDirectionToggle {
+    grid-column:2; grid-row:auto; justify-self:start;
+    width:43px; min-width:43px; height:43px; min-height:43px;
+    padding:0; border-radius:0; font-size:20px;
+    background:#101013; border:1px solid var(--line);
+  }
+  .toolbar .resultCount { grid-column:3; grid-row:auto; justify-self:end; text-align:right; margin:0; }
+  .toolbar > select { grid-column:1 / -1; }
+}
+
+@media (max-width:680px) {
+  .toolbar .viewSwitch, .toolbar .sortDirectionToggle, .toolbar .resultCount { grid-row:5; }
+}
