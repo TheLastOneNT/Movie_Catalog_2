@@ -749,6 +749,8 @@ export default function Home() {
   const [genreOptions, setGenreOptions] = useState([]);
   const [genreSyncing, setGenreSyncing] = useState(false);
   const [genreSyncMessage, setGenreSyncMessage] = useState("");
+  const [unresolvedGenres, setUnresolvedGenres] = useState([]);
+  const [unresolvedGenresLoading, setUnresolvedGenresLoading] = useState(false);
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
@@ -774,8 +776,10 @@ export default function Home() {
 
   const personal = (movie) => personalFor(movie, activeMember);
   const genreName = (id) => {
+    const known=genreLabels[id];
+    if(known)return known[language==="en"?1:0];
     const entry=genreOptions.find(item=>item.id===id);
-    return entry ? (language==="en"?entry.en:entry.ru) : String(id);
+    return entry ? cleanGenreLabel(language==="en"?entry.en:entry.ru) : (language==="en"?"Other genre":"Другой жанр");
   };
   const loadGenres = useCallback(async()=>{
     try {
@@ -789,9 +793,22 @@ export default function Home() {
     if(authState==="authenticated") loadGenres();
   },[authState,loadGenres]);
   const availableGenres = useMemo(()=>{
-    const ids=new Set(movies.flatMap(movie=>movie.genreIds||[]));
+    const ids=new Set(movies.flatMap(movie=>movie.genreIds||[]).filter(id=>!nonGenreIds.has(id)));
     return [...ids].sort((a,b)=>genreName(a).localeCompare(genreName(b),language==="en"?"en":"ru"));
   },[movies,genreOptions,language]);
+  const loadUnresolvedGenres=useCallback(async()=>{
+    setUnresolvedGenresLoading(true);
+    try {
+      const response=await fetch("/api/tmdb/genres/unresolved",{credentials:"same-origin",cache:"no-store"});
+      if(!response.ok) throw new Error("Cannot load unmatched movies");
+      const data=await response.json();
+      setUnresolvedGenres(data.movies||[]);
+    } catch { setGenreSyncMessage(language==="en"?"Could not load unmatched titles.":"Не удалось загрузить список неподобранных фильмов."); }
+    finally {setUnresolvedGenresLoading(false);}
+  },[language]);
+  useEffect(()=>{
+    if(collectionInfoOpen&&authState==="authenticated")loadUnresolvedGenres();
+  },[collectionInfoOpen,authState,loadUnresolvedGenres]);
   const syncExistingGenres = async()=>{
     if(genreSyncing||syncState==="offline") return;
     setGenreSyncing(true);setGenreSyncMessage("");
@@ -808,7 +825,7 @@ export default function Home() {
         if(data.done)break;
         await new Promise(resolve=>setTimeout(resolve,200));
       }
-      await loadCatalog();await loadGenres();
+      await loadCatalog();await loadGenres();await loadUnresolvedGenres();
     }catch(error){setGenreSyncMessage(error.message||"TMDB unavailable");}
     finally{setGenreSyncing(false);}
   };
@@ -1576,6 +1593,20 @@ export default function Home() {
               </button>
               {genreSyncMessage&&<p role="status">{genreSyncMessage}</p>}
             </section>
+              <section className="libraryUnresolvedGenres" aria-label={language==="en"?"Unmatched movie metadata":"Фильмы без жанров TMDB"}>
+                <h4>{language==="en"?"Requires review":"Требуют проверки"} {unresolvedGenres.length>0?`(${unresolvedGenres.length})`:""}</h4>
+                {unresolvedGenresLoading?<p>{language==="en"?"Loading…":"Загрузка…"}</p>:
+                unresolvedGenres.length===0?<p>{language==="en"?"All movie metadata has been matched.":"Все записи сопоставлены."}</p>:
+                <ul>{unresolvedGenres.map(movie=><li key={movie.id}>
+                  <button type="button" onClick={()=>{setCollectionInfoOpen(false);openMovie(movie.id);}}>
+                    <strong>{language==="en"&&movie.titleEn?movie.titleEn:movie.title}</strong>
+                    <span>{movie.releaseYear|| (language==="en"?"Year unknown":"Год неизвестен")} · {t.categories[movie.category]}</span>
+                  </button>
+                </li>)}</ul>}
+                <p>{language==="en"
+                  ?"These entries could not be matched with sufficient confidence. Open a card to check the title and year; they are never changed automatically."
+                  :"Для этих записей не удалось подтвердить точное соответствие TMDB. Откройте карточку и проверьте название и год. Данные автоматически не изменяются."}</p>
+              </section>
             <section className="libraryAlerts" aria-labelledby="libraryAlertsHeading">
               <h3 id="libraryAlertsHeading">{language === "en" ? "Catalog warnings" : "Предупреждения каталога"}
                 {visibleLibraryAlerts.length > 0 && <span className="libraryAlertCount">{visibleLibraryAlerts.length}</span>}
