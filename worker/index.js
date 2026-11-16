@@ -1,6 +1,6 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 import { averageRatedSeasons } from "../lib/series-cycles.js";
-import { findDuplicateTitle } from "../lib/title-duplicates.js";
+import { findDuplicateTitle, normalizeTitle } from "../lib/title-duplicates.js";
 import { writeWeeklyBackup } from "./scheduled-backup.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
@@ -116,6 +116,9 @@ function mapMovie(row) {
     descriptionEn: row.description_en,
     poster: row.poster_path,
     releaseYear: row.release_year,
+    tmdbId: row.tmdb_id ?? null,
+    tmdbMediaType: row.tmdb_media_type ?? null,
+    genreIds: (() => { try { return JSON.parse(row.genre_ids || "[]"); } catch { return []; } })(),
     collectionOrder: row.collection_order,
     progress: {
       status: row.status === "watched" ? "watched" : "unwatched",
@@ -152,7 +155,7 @@ async function listCatalog(env) {
     env.DB.prepare(`
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
-      m.poster_path, m.release_year, m.collection_order,
+      m.poster_path, m.release_year, m.tmdb_id, m.tmdb_media_type, m.genre_ids, m.collection_order,
       p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
@@ -176,7 +179,7 @@ async function getCatalogMovie(env, movieId) {
   const row = await env.DB.prepare(`
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
-      m.poster_path, m.release_year, m.collection_order,
+      m.poster_path, m.release_year, m.tmdb_id, m.tmdb_media_type, m.genre_ids, m.collection_order,
       p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
@@ -513,15 +516,28 @@ async function createMovie(request, env) {
   const existing = await findExistingMovie(env, {title, titleEn, category:input.category, releaseYear});
   if (existing) return json({error:"A title with this name, category and release year is already in your library.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   const posterFromTmdb = tmdbPosterUrl(input.posterFromTmdb);
+  let tmdbReference = null;
+  if (Number.isSafeInteger(input.tmdbId) && input.tmdbId > 0
+      && input.tmdbMediaType === tmdbMediaType(input.category)) {
+    try {
+      const details = await tmdbDetails(env, input.tmdbMediaType, input.tmdbId);
+      const titleMatches = [details.title,details.titleEn].map(normalizeTitle)
+        .some(name=>name && [title,titleEn].map(normalizeTitle).includes(name));
+      if (titleMatches && (releaseYear == null || details.releaseYear === releaseYear))
+        tmdbReference = {id:input.tmdbId,mediaType:input.tmdbMediaType,
+          genreIds:details.genreIds.filter(n=>Number.isSafeInteger(n))};
+    } catch (error) { console.warn("TMDB metadata unavailable; saved without genres",error?.message); }
+  }
   const nextOrder = await env.DB.prepare(
     "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
   ).first();
   const insert = await env.DB.prepare(`
     INSERT INTO movies (
       category, title_ru, title_en, description_ru, description_en,
-      poster_path, release_year, collection_order
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1)).run();
+      poster_path, release_year, collection_order, tmdb_id, tmdb_media_type, genre_ids
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1),
+    tmdbReference?.id ?? null, tmdbReference?.mediaType ?? null, JSON.stringify(tmdbReference?.genreIds || [])).run();
 
   const movieId = Number(insert.meta.last_row_id);
 
@@ -1190,6 +1206,8 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/catalog/alerts/dismissed" && request.method === "POST")
     return dismissCatalogAlert(request,env);
   if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
+  if (url.pathname === "/api/tmdb/genres" && request.method === "GET") return listTmdbGenres(env);
+  if (url.pathname === "/api/tmdb/genres/backfill" && request.method === "POST") return backfillTmdbGenres(request, env);
   if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
   const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
   if (tmdbApply && request.method === "POST") return applyTmdbMatch(request,env,Number(tmdbApply[1]));
