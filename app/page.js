@@ -5,6 +5,7 @@ import { translations } from "@/lib/i18n";
 import { matchesMovieQuery } from "@/lib/search";
 import { randomizeMovies, sortOldestWatched } from "@/lib/catalog";
 import { findDuplicateTitle, findPotentialDuplicatePairs } from "@/lib/title-duplicates";
+import { normalizeGenreIds, matchesGenreFilter } from "@/lib/genre-groups";
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 // These are content categories in our top navigation, not useful genre filters.
@@ -793,7 +794,7 @@ export default function Home() {
     if(authState==="authenticated") loadGenres();
   },[authState,loadGenres]);
   const availableGenres = useMemo(()=>{
-    const ids=new Set(movies.flatMap(movie=>movie.genreIds||[]).filter(id=>!nonGenreIds.has(id)));
+    const ids=new Set(movies.flatMap(movie=>normalizeGenreIds(movie.genreIds)).filter(id=>!nonGenreIds.has(id)));
     return [...ids].sort((a,b)=>genreName(a).localeCompare(genreName(b),language==="en"?"en":"ru"));
   },[movies,genreOptions,language]);
   const loadUnresolvedGenres=useCallback(async()=>{
@@ -1345,7 +1346,7 @@ export default function Home() {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
       if (status === "watchlist" && movie.progress.status === "watched" && !personalFor(movie, activeMember).wantsToWatch) return false;
-      if (genre !== "all" && !(movie.genreIds||[]).includes(Number(genre))) return false;
+      if (!matchesGenreFilter(movie.genreIds, genre)) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
@@ -1658,8 +1659,8 @@ export default function Home() {
               <h2>{language === "en" && selected.titleEn ? selected.titleEn : selected.title}</h2>
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
-              {!!selected.genreIds?.length && <div className="movieGenreTags" aria-label={language==="en"?"Genres":"Жанры"}>
-                {selected.genreIds.map(id=><span key={id}>{genreName(id)}</span>)}
+              {!!normalizeGenreIds(selected.genreIds).length && <div className="movieGenreTags" aria-label={language==="en"?"Genres":"Жанры"}>
+                {normalizeGenreIds(selected.genreIds).map(id=><span key={id}>{genreName(id)}</span>)}
               </div>}
 
               <div className="familyRatings"><span>{selected.category === "series"
