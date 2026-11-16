@@ -564,6 +564,14 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     }catch(err){setError(err.message);}
     finally{setSaving(false);}
   };
+  const addHistoricalSeason=(cycle)=>{
+    setEditingId(null);setEditingCycleId(cycle.id);
+    setSeasonNumber(Math.min(200,Math.max(1,...cycle.seasons.map(entry=>entry.seasonNumber))+1));
+    setStartedAt(cycle.endedAt||cycle.startedAt);
+    setFinishedAt(cycle.endedAt||cycle.startedAt);
+    setRating(null);
+    setError("");
+  };
   const edit=(entry,cycle)=>{
     setEditingId(entry.id);setEditingCycleId(cycle.id);setSeasonNumber(entry.seasonNumber);
     setStartedAt(entry.startedAt);setFinishedAt(entry.finishedAt||"");setRating(entry.rating);
@@ -614,6 +622,11 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
             </div>}
           </li>)}
         </ul>
+        {cycle.outcome!=="watching"&&<div className="seasonActions">
+          <button type="button" disabled={saving} onClick={()=>addHistoricalSeason(cycle)}>
+            {en?"+ Add another season to this viewing":"+ Добавить сезон в этот просмотр"}
+          </button>
+        </div>}
         {cycle.outcome==="watching"&&<div className="seriesCycleFinish">
           <p>{en?"End this viewing cycle to publish its average rating. Unwatched seasons won't be included.":
             "Завершите цикл, чтобы пересчитать общую оценку. Непросмотренные сезоны не учитываются."}</p>
@@ -634,10 +647,11 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
         </div>}
       </section>)}
     </div>
-    {!loading&&!active&&!editingId&&<button type="button" className="seriesNewCycleButton" disabled={saving}
+    {!loading&&!active&&!editingId&&!editingCycleId&&<button type="button" className="seriesNewCycleButton" disabled={saving}
       onClick={createCycle}>{en?"+ Start a viewing cycle":"+ Начать новый цикл просмотра"}</button>}
-    {(active||editingId)&&<form className="seasonForm" onSubmit={submit} noValidate>
+    {(active||editingId||editingCycleId)&&<form className="seasonForm" onSubmit={submit} noValidate>
       <h4 className="seasonFormTitle">{editingId?(en?"Edit season":"Изменить просмотр сезона"):
+        editingCycleId?(en?"Add season to selected viewing":"Добавить сезон в выбранный просмотр"):
         (en?"Add season to current cycle":"Добавить сезон в текущий цикл")}</h4>
       <label className="seasonSelectField"><span className="seasonFieldCaption">{en?"Season":"Сезон"}</span>
         <select value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}>
@@ -655,7 +669,7 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
         disabled={saving||!startedAt||(Boolean(finishedAt)&&rating==null)}>
         {saving?"…":editingId?(en?"Save changes":"Сохранить изменения"):(en?"Save season":"Записать сезон")}
         </button>
-        {editingId&&<button type="button" onClick={reset}>{en?"Cancel":"Отмена"}</button>}
+        {(editingId||editingCycleId)&&<button type="button" onClick={reset}>{en?"Cancel":"Отмена"}</button>}
       </div>
     </form>}
     {!loading&&!active&&!editingId&&error&&<p className="formError" role="alert">{error}</p>}
