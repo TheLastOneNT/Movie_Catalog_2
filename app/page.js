@@ -420,28 +420,97 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 // selected start is a valid, unfinished viewing period.
 function SeasonRangeCalendar({start, end, onChange, language}) {
   const en=language==="en";
+  const locale=en?"en-US":"ru-RU";
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(()=>(start||todayLocal()).slice(0,7));
+  const [stage,setStage]=useState("start");
+  const year=Number(month.slice(0,4));
+  const monthIndex=Number(month.slice(5,7))-1;
   const max=todayLocal();
+  const pretty=(date)=>date?new Intl.DateTimeFormat(locale,{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"})
+    .format(new Date(date+"T12:00:00Z")):(en?"Not selected":"Не выбрана");
+  const move=(diff)=>{
+    const date=new Date(Date.UTC(year,monthIndex+diff,1));
+    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
+  };
+  const selectDay=(day)=>{
+    const date=`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    if(date>max)return;
+    if(stage==="start" || !start || date<start){
+      onChange(date,"");
+      setStage("end");
+    } else {
+      onChange(start,date);
+      setStage("start");
+      setOpen(false);
+    }
+  };
+  const openPicker=()=>{
+    if(!open){
+      setStage(start&&!end?"end":"start");
+      setMonth((start||todayLocal()).slice(0,7));
+    }
+    setOpen(value=>!value);
+  };
+  const weekdayLabels=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const leading=(new Date(Date.UTC(year,monthIndex,1)).getUTCDay()+6)%7;
+  const days=new Date(Date.UTC(year,monthIndex+1,0)).getUTCDate();
+  const cells=Array.from({length:Math.ceil((leading+days)/7)*7},(_,position)=>{
+    const day=position-leading+1;
+    return day>=1&&day<=days?day:null;
+  });
+  const years=Array.from({length:new Date().getFullYear()-1887},(_,index)=>new Date().getFullYear()-index);
   return <div className="seasonRangeField">
     <span className="seasonFieldCaption">{en?"Viewing period":"Период просмотра"}</span>
-    <div className="seasonNativeDateRange">
-      <label>
-        <span>{en?"Started":"Начали смотреть"}</span>
-        <ViewingDateField value={start} max={max} language={language}
-          label={en?"Season start date":"Дата начала просмотра"}
-          onChange={value=>onChange(value,"")} />
-      </label>
-      <label>
-        <span>{en?"Finished":"Закончили смотреть"}</span>
-        <ViewingDateField value={end} max={max} disabled={!start} language={language}
-          label={en?"Season finish date":"Дата окончания просмотра"}
-          onChange={value=>onChange(start,value&&value<start?start:value)} />
-      </label>
-    </div>
-    <div className="seasonNativeActions">
-      <button type="button" onClick={()=>onChange(start||todayLocal(),"")}>
-        {en?"Still watching / no end date":"Ещё смотрим / без даты окончания"}
-      </button>
-    </div>
+    <button type="button" className="seasonRangeTrigger" onClick={openPicker} aria-expanded={open}
+      aria-label={en?"Choose start and end date":"Выбрать начало и окончание просмотра"}>
+      <Icon name="calendar" size={18}/>
+      <span className="seasonRangeText">{pretty(start)} <span className="seasonRangeSeparator">→</span>
+        {end?pretty(end):(start?(en?"Still watching":"Ещё смотрим"):(en?"Choose period":"Выбрать период"))}</span>
+    </button>
+    {open&&<div className="seasonCalendar" role="group" aria-label={en?"Viewing range calendar":"Календарь периода просмотра"}>
+      <div className="seasonCalendarHead">
+        <button type="button" onClick={()=>move(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
+        <div className="seasonCalendarJump">
+          <select aria-label={en?"Month":"Месяц"} value={monthIndex}
+            onChange={event=>setMonth(`${year}-${String(Number(event.target.value)+1).padStart(2,"0")}`)}>
+            {Array.from({length:12},(_,index)=><option key={index} value={index}>
+              {new Intl.DateTimeFormat(locale,{month:"long",timeZone:"UTC"}).format(new Date(Date.UTC(2020,index,1)))}
+            </option>)}
+          </select>
+          <select aria-label={en?"Year":"Год"} value={year}
+            onChange={event=>setMonth(`${event.target.value}-${String(monthIndex+1).padStart(2,"0")}`)}>
+            {years.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={()=>move(1)} aria-label={en?"Next month":"Следующий месяц"}
+          disabled={month>=max.slice(0,7)}>›</button>
+      </div>
+      <p className="seasonCalendarHint">{stage==="start"
+        ? (en?"First, select the start date":"Сначала выберите дату начала")
+        : (en?"Now select the end date, or choose Still watching":"Теперь выберите дату окончания или «Ещё смотрим»")}</p>
+      <div className="seasonCalendarGrid">
+        {weekdayLabels.map(label=><span className="seasonCalendarWeekday" key={label}>{label}</span>)}
+        {cells.map((day,index)=>day?
+          <button type="button" key={index} disabled={`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`>max}
+            className={["seasonCalendarDay",
+              `${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`===start?"start":"",
+              `${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`===end?"end":"",
+              start&&end&&`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`>start&&
+                `${year}-${String(monthIndex+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`<end?"inside":""].filter(Boolean).join(" ")}
+            onClick={()=>selectDay(day)}>{day}</button>
+          :<span key={index}/>)}
+      </div>
+      <div className="seasonCalendarActions">
+        <button type="button" onClick={()=>{onChange(start||todayLocal(),"");setStage("end");setOpen(false);}}>
+          {en?"Still watching":"Ещё смотрим"}
+        </button>
+        <button type="button" onClick={()=>{onChange("","");setStage("start");setMonth(todayLocal().slice(0,7));}}>
+          {en?"Clear period":"Сбросить период"}
+        </button>
+        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
+      </div>
+    </div>}
   </div>;
 }
 
