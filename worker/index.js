@@ -497,10 +497,18 @@ async function createMovie(request, env) {
   if (input.status !== "watched" && input.rating != null) throw new ValidationError("Unwatched content cannot be rated.");
   if (input.status === "watched" && input.category !== "series" && !input.lastWatchedAt)
     throw new ValidationError("A watched movie needs its viewing date.");
-  if (input.status === "watched" && input.category === "series")
-    throw new ValidationError("Add the series to your watchlist and log seasons in a viewing cycle.");
-  if (input.status === "watched" && !Number.isInteger(input.rating))
+  const watchedSeries = input.status === "watched" && input.category === "series";
+  if (watchedSeries) {
+    if (!Number.isInteger(input.seasonNumber) || input.seasonNumber < 1 || input.seasonNumber > 200)
+      throw new ValidationError("Choose the first recorded season (1–200).");
+    const firstDay = validateViewingDay(input.startedAt);
+    const finalDay = validateViewingDay(input.lastWatchedAt);
+    if (finalDay < firstDay) throw new ValidationError("A series end date must not precede its start date.");
+    if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)
+      throw new ValidationError("Rate the completed season from 1 to 5.");
+  } else if (input.status === "watched" && (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)) {
     throw new ValidationError("A watched movie requires a 1–5 rating.");
+  }
   if (input.status === "watched") validateWatchDate(input.lastWatchedAt);
   const existing = await findExistingMovie(env, {title, titleEn, category:input.category, releaseYear});
   if (existing) return json({error:"A title with this name, category and release year is already in your library.", duplicateId:existing.id, duplicateTitle:existing.title},409);
@@ -517,17 +525,38 @@ async function createMovie(request, env) {
 
   const movieId = Number(insert.meta.last_row_id);
 
-  const progressInput = {
-    status: input.status === "watched" ? "watched" : "unwatched",
-    rating: input.status === "watched" && input.category !== "series" ? input.rating ?? null : null,
-  };
-  if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
-  const normalized = normalizeProgressPatch(progressInput, {});
-  await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
-  if (progressInput.rating != null) {
-    await env.DB.prepare("UPDATE watch_history SET rating=? WHERE movie_id=? AND watched_at=?")
-      .bind(progressInput.rating,movieId,normalized.value.lastWatchedAt).run();
-    await refreshCurrentRating(env,movieId);
+  // A series' first historical viewing is a completed, rated season inside a
+  // completed cycle. Never create a fake film-level watch_history record for TV.
+  if (watchedSeries) {
+    try {
+      const cycleResult = await env.DB.prepare(
+        "INSERT INTO series_cycles(movie_id,started_at,ended_at,outcome) VALUES (?,?,?,'completed')"
+      ).bind(movieId,input.startedAt,input.lastWatchedAt).run();
+      const cycleId = Number(cycleResult.meta.last_row_id);
+      const entryResult = await env.DB.prepare(
+        "INSERT INTO season_viewings(movie_id,cycle_id,season_number,started_at,finished_at,rating) VALUES (?,?,?,?,?,?)"
+      ).bind(movieId,cycleId,input.seasonNumber,input.startedAt,input.lastWatchedAt,input.rating).run();
+      await registerRating(env,movieId,input.rating,"season",Number(entryResult.meta.last_row_id));
+      await refreshViewingSummary(env,movieId);
+    } catch (error) {
+      // Compensating delete affects only the newly created row and cascades to its
+      // new cycle, seasons and rating changes; existing collection stays untouched.
+      await env.DB.prepare("DELETE FROM movies WHERE id=?").bind(movieId).run();
+      throw error;
+    }
+  } else {
+    const progressInput = {
+      status: input.status === "watched" ? "watched" : "unwatched",
+      rating: input.status === "watched" ? input.rating ?? null : null,
+    };
+    if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
+    const normalized = normalizeProgressPatch(progressInput, {});
+    await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
+    if (progressInput.rating != null) {
+      await env.DB.prepare("UPDATE watch_history SET rating=? WHERE movie_id=? AND watched_at=?")
+        .bind(progressInput.rating,movieId,normalized.value.lastWatchedAt).run();
+      await refreshCurrentRating(env,movieId);
+    }
   }
   if (input.wantToWatch === true) {
     await env.DB.prepare(`INSERT INTO member_progress(movie_id,member_id,wants_to_watch) VALUES (?,1,1)
