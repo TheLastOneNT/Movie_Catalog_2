@@ -54,7 +54,7 @@ test("genre collection is additive and includes old and future TMDB data",()=>{
  assert.match(worker,/async function backfillTmdbGenres/);
  assert.match(worker,/if\(viable.length!==1\)/);
  assert.match(worker,/tmdb_id IS NULL/);
- assert.match(page,/genre !== "all"/);
+ assert.match(page,/matchesGenreFilter\(movie.genreIds, genre\)/);
  assert.match(page,/\/api\/tmdb\/genres\/backfill/);
 });
 test("restorable JSON exports carry genre metadata while old exports remain valid",()=>{
