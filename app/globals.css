@@ -772,3 +772,14 @@ img { display: block; max-width: 100%; }
 
 .collectionInfoButton { position: relative; }
 .collectionInfoAlertDot { position: absolute; right: -3px; top: -3px; width: 10px; height: 10px; border: 2px solid #151417; border-radius: 50%; background: #ecad47; box-sizing: content-box; }
+
+/* Accessible, compact controls for fast catalog entry and navigation. */
+.addTitleInput { display:flex; align-items:center; position:relative; min-width:0; width:100%; }
+.addTitleInput > input { width:100%; padding-right:42px; }
+.addTitleInput > button { position:absolute; right:5px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:35px; height:35px; border:0; border-radius:5px; background:rgba(155,149,149,.16); color:inherit; cursor:pointer; }
+.addTitleInput > button:hover { background:rgba(214,173,99,.25); }
+.seasonCalendarJump { display:flex; min-width:0; flex-wrap:wrap; gap:6px; justify-content:center; align-items:center; }
+.seasonCalendarJump select { width:auto; max-width:150px; min-width:70px; min-height:37px; border:1px solid rgba(214,173,99,.35); border-radius:5px; padding:5px 6px; background:#16151a; color:#f2e9db; font-size:13px; }
+.sortDirectionToggle { display:grid; place-items:center; min-width:43px; min-height:44px; border:1px solid rgba(214,173,99,.45); border-radius:6px; background:rgba(214,173,99,.1); color:var(--gold-bright); font-size:22px; cursor:pointer; }
+.sortDirectionToggle:hover { background:rgba(214,173,99,.24); }
+@media (max-width:390px) { .seasonCalendarJump select { max-width:111px; font-size:12px; } }
