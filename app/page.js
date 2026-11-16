@@ -8,7 +8,7 @@ import { findDuplicateTitle, findPotentialDuplicatePairs } from "@/lib/title-dup
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
-const statusOrder = ["unwatched", "watched"];
+const statusOrder = ["watched"];
 
 function Icon({ name, size = 20, filled = false }) {
   const props = {
@@ -149,7 +149,7 @@ function todayLocal() {
 
 function MovieCard({ movie, language, labels, onOpen, view }) {
   const watched = movie.progress.status === "watched";
-  const inWatchlist = Boolean(personalFor(movie, 1).wantsToWatch) && !watched;
+  const inWatchlist = !watched;
   const rating = movie.progress.rating;
   const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
 
@@ -682,6 +682,10 @@ export default function Home() {
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("random");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [genre, setGenre] = useState("all");
+  const [genreOptions, setGenreOptions] = useState([]);
+  const [genreSyncing, setGenreSyncing] = useState(false);
+  const [genreSyncMessage, setGenreSyncMessage] = useState("");
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
@@ -706,6 +710,45 @@ export default function Home() {
   const t = translations[language];
 
   const personal = (movie) => personalFor(movie, activeMember);
+  const genreName = (id) => {
+    const entry=genreOptions.find(item=>item.id===id);
+    return entry ? (language==="en"?entry.en:entry.ru) : String(id);
+  };
+  const loadGenres = useCallback(async()=>{
+    try {
+      const response=await fetch("/api/tmdb/genres",{credentials:"same-origin"});
+      if(!response.ok) return;
+      const data=await response.json();
+      setGenreOptions(data.genres||[]);
+    } catch { /* Genres remain filterable by ID during a TMDB outage. */ }
+  }, []);
+  useEffect(()=>{
+    if(authState==="authenticated") loadGenres();
+  },[authState,loadGenres]);
+  const availableGenres = useMemo(()=>{
+    const ids=new Set(movies.flatMap(movie=>movie.genreIds||[]));
+    return [...ids].sort((a,b)=>genreName(a).localeCompare(genreName(b),language==="en"?"en":"ru"));
+  },[movies,genreOptions,language]);
+  const syncExistingGenres = async()=>{
+    if(genreSyncing||syncState==="offline") return;
+    setGenreSyncing(true);setGenreSyncMessage("");
+    let cursor=0,updated=0,unresolved=0;
+    try{
+      for(let batch=0;batch<500;batch++){
+        const response=await fetch("/api/tmdb/genres/backfill",{method:"POST",credentials:"same-origin",
+          headers:{"content-type":"application/json"},body:JSON.stringify({cursor})});
+        const data=await response.json();
+        if(!response.ok) throw new Error(data.error||"TMDB unavailable");
+        updated+=data.updated||0;unresolved+=(data.unresolved||[]).length;
+        cursor=data.nextCursor;
+        setGenreSyncMessage(language==="en"?`Matched: ${updated}. Needs review: ${unresolved}.`:`Сопоставлено: ${updated}. Требуют проверки: ${unresolved}.`);
+        if(data.done)break;
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      await loadCatalog();await loadGenres();
+    }catch(error){setGenreSyncMessage(error.message||"TMDB unavailable");}
+    finally{setGenreSyncing(false);}
+  };
 
   const loadLibraryAlerts = useCallback(async () => {
     try {
@@ -1221,7 +1264,8 @@ export default function Home() {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
-      if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
+      if (status === "watchlist" && movie.progress.status === "watched" && !personalFor(movie, activeMember).wantsToWatch) return false;
+      if (genre !== "all" && !(movie.genreIds||[]).includes(Number(genre))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
@@ -1243,10 +1287,10 @@ export default function Home() {
       if (sortDirection === "asc") result.reverse();
     }
     return result;
-  }, [category, movies, query, shuffleSeed, sort, sortDirection, status, t.locale]);
+  }, [category, genre, movies, query, shuffleSeed, sort, sortDirection, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
-  const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
+  const watchlistCount = movies.filter((movie) => movie.progress.status !== "watched" || personalFor(movie, activeMember).wantsToWatch).length;
   const ratedCount = movies.filter((movie) => movie.progress.rating).length;
   const potentialDuplicatePairs = useMemo(() => findPotentialDuplicatePairs(movies), [movies]);
   const visibleLibraryAlerts = libraryAlertsReady
@@ -1387,6 +1431,10 @@ export default function Home() {
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
             <option value="watchlist">{t.family.watchlist}</option>
           </select>
+          <select value={genre} onChange={event=>setGenre(event.target.value)} aria-label={language==="en"?"Genre":"Жанр"}>
+            <option value="all">{language==="en"?"All genres":"Все жанры"}</option>
+            {availableGenres.map(id=><option value={id} key={id}>{genreName(id)}</option>)}
+          </select>
           <select value={sort} onChange={(event) => {setSort(event.target.value);setSortDirection("desc");}} aria-label={t.catalog.collectionOrder}>
             <option value="random">{language === "en" ? "Default order" : "Обычный порядок"}</option>
             <option value="rating">{language === "en" ? "By rating" : "По оценке"}</option>
@@ -1457,6 +1505,14 @@ export default function Home() {
               <div><strong>{ratedCount}</strong><span>{language === "en" ? "Rated" : "С оценкой"}</span></div>
               <div><strong>{watchlistCount}</strong><span>{language === "en" ? "Watchlist" : "Хочу посмотреть"}</span></div>
             </div>
+            <section className="libraryGenreSync">
+              <h3>{language==="en"?"TMDB genres":"Жанры TMDB"}</h3>
+              <p>{language==="en"?"Fill genres for existing titles using exact TMDB title/year matches. Uncertain matches are skipped; titles, ratings and posters are not changed.":"Подобрать жанры существующим фильмам по точному совпадению названия и года. Неоднозначные совпадения пропускаются; названия, оценки и постеры не изменяются."}</p>
+              <button type="button" disabled={genreSyncing||syncState==="offline"} onClick={syncExistingGenres}>
+                {genreSyncing?(language==="en"?"Updating genres…":"Подбираем жанры…"):(language==="en"?"Update existing genres":"Подобрать жанры для коллекции")}
+              </button>
+              {genreSyncMessage&&<p role="status">{genreSyncMessage}</p>}
+            </section>
             <section className="libraryAlerts" aria-labelledby="libraryAlertsHeading">
               <h3 id="libraryAlertsHeading">{language === "en" ? "Catalog warnings" : "Предупреждения каталога"}
                 {visibleLibraryAlerts.length > 0 && <span className="libraryAlertCount">{visibleLibraryAlerts.length}</span>}
@@ -1508,6 +1564,9 @@ export default function Home() {
               <h2>{language === "en" && selected.titleEn ? selected.titleEn : selected.title}</h2>
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
+              {!!selected.genreIds?.length && <div className="movieGenreTags" aria-label={language==="en"?"Genres":"Жанры"}>
+                {selected.genreIds.map(id=><span key={id}>{genreName(id)}</span>)}
+              </div>}
 
               <div className="familyRatings"><span>{selected.category === "series"
                 ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")
