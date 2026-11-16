@@ -796,3 +796,20 @@ img { display: block; max-width: 100%; }
 .addSeriesHistory { display:grid; gap:12px; border:1px solid rgba(214,173,99,.3); padding:13px; border-radius:6px; }
 .addSeriesHistory > label { display:grid; gap:7px; }
 .addSeriesHistory > small { color:#bbb4ac; line-height:1.5; }
+
+
+/* Keep seven catalog toolbar controls in a predictable responsive grid. */
+@media (min-width:1181px) {
+  .toolbar { grid-template-columns:minmax(220px,1fr) auto auto auto 44px 80px auto; }
+  .toolbar > select { min-width:0; }
+}
+@media (min-width:681px) and (max-width:1180px) {
+  .toolbar { grid-template-columns:minmax(140px,1fr) auto auto 44px 80px auto; }
+  .toolbar .searchBox { grid-column:1 / -1; }
+  .toolbar .resultCount { grid-column:auto; text-align:right; }
+}
+@media (max-width:680px) {
+  .toolbar .sortDirectionToggle { grid-column:1 / -1; justify-self:end; width:52px; }
+  .toolbar .viewSwitch { grid-column:1; }
+  .toolbar .resultCount { grid-column:2; }
+}
