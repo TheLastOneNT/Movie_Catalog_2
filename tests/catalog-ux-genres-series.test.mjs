@@ -11,12 +11,14 @@ test("movie title can be cleared with one accessible button",()=>{
  assert.match(page,/update\("title",""\)/);
  assert.match(page,/setTmdbMatches\(\[\]\)/);
 });
-test("season range calendar jumps directly to a month and year",()=>{
+test("series date range reuses the native iOS month/year picker from movie dates",()=>{
  const calendar=page.slice(page.indexOf("function SeasonRangeCalendar("),page.indexOf("function SeasonTracker("));
- assert.match(calendar,/className="seasonCalendarJump"/);
- assert.match(calendar,/aria-label=\{en\?"Year":"Год"\}/);
- assert.match(calendar,/aria-label=\{en\?"Month":"Месяц"\}/);
- assert.match(calendar,/onChange=\{event=>setMonth/);
+ assert.match(calendar,/className="seasonNativeDateRange"/);
+ assert.equal((calendar.match(/<ViewingDateField/g)||[]).length,2);
+ assert.match(calendar,/value=\{start\}/);
+ assert.match(calendar,/value=\{end\}/);
+ assert.match(page,/<input type="date"/);
+ assert.doesNotMatch(calendar,/changeMonth|seasonCalendarGrid/);
 });
 test("watched series is supported with a real rated and dated season",()=>{
  const create=worker.slice(worker.indexOf("async function createMovie("),worker.indexOf("async function ensurePosterTable("));
