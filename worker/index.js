@@ -956,9 +956,11 @@ async function addViewingEvent(request, env, movieId) {
     throw new ValidationError("Choose at least one family member.");
   }
   const viewers = [...new Set(body.viewers.map(assertMemberId))];
-  await env.DB.prepare("INSERT OR IGNORE INTO watch_history(movie_id, watched_at, rating) VALUES (?, ?, ?)").bind(movieId, watchedAt, rating).run();
-  // Preserve the old event's rating when re-submitting an existing date.
-  // A rating change can be made explicitly using the event-rating endpoint.
+  const existing = await env.DB.prepare(
+    "SELECT id FROM watch_history WHERE movie_id = ? AND watched_at = ?",
+  ).bind(movieId, watchedAt).first();
+  if (existing) return json({ error: "A viewing is already recorded on this date. Edit its rating in the viewing history instead." }, 409);
+  await env.DB.prepare("INSERT INTO watch_history(movie_id, watched_at, rating) VALUES (?, ?, ?)").bind(movieId, watchedAt, rating).run();
   const row = await env.DB.prepare(
     "SELECT id FROM watch_history WHERE movie_id = ? AND watched_at = ?",
   ).bind(movieId, watchedAt).first();
