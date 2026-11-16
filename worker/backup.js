@@ -51,6 +51,13 @@ export function validateBackup(snapshot) {
     ensure(movie.poster == null || validString(movie.poster, 2048), "Invalid movie poster path.");
     ensure(movie.releaseYear == null || (Number.isInteger(movie.releaseYear) && movie.releaseYear >= 1888 && movie.releaseYear <= 2200), "Invalid movie release year.");
     ensure(Number.isInteger(movie.collectionOrder) && movie.collectionOrder >= 0, "Invalid movie position.");
+    ensure(movie.tmdbId == null || (Number.isSafeInteger(movie.tmdbId) && movie.tmdbId > 0),
+      "Invalid TMDB identifier.");
+    ensure(movie.tmdbMediaType == null || ["movie","tv"].includes(movie.tmdbMediaType),
+      "Invalid TMDB media type.");
+    ensure(movie.genreIds == null || (Array.isArray(movie.genreIds) && movie.genreIds.length <= 40
+      && movie.genreIds.every(id=>Number.isSafeInteger(id) && id > 0)),
+      "Invalid movie genres.");
     const progress = movie.progress;
     ensure(progress && ["unwatched", "watched"].includes(progress.status), "Invalid viewing status.");
     ensure(validRating(progress.rating) && typeof progress.isFavorite === "boolean" && validDate(progress.lastWatchedAt)

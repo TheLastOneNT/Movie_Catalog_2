@@ -40,7 +40,7 @@ test("multiple collisions produce each unordered pair once", () => {
 
 test("catalog has accessible watchlist badges in grid and list views",async()=>{
   const page=await readFile(new URL("../app/page.js",import.meta.url),"utf8");
-  assert.match(page,/inWatchlist = Boolean\(personalFor\(movie, 1\)\.wantsToWatch\) && !watched/);
+  assert.match(page,/inWatchlist = !watched/);
   assert.match(page,/cardRatingBadge watchlist/);
   assert.match(page,/listRatingLabel watchlist/);
   assert.match(page,/libraryAlertDismiss/);

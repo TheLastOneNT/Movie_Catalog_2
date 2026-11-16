@@ -1,6 +1,6 @@
 import { normalizeProgressPatch, ValidationError } from "./progress.js";
 import { averageRatedSeasons } from "../lib/series-cycles.js";
-import { findDuplicateTitle } from "../lib/title-duplicates.js";
+import { findDuplicateTitle, normalizeTitle } from "../lib/title-duplicates.js";
 import { writeWeeklyBackup } from "./scheduled-backup.js";
 import { validateBackup, bytesToBase64, base64ToBytes, BackupError, MAX_BACKUP_BYTES } from "./backup.js";
 
@@ -116,6 +116,9 @@ function mapMovie(row) {
     descriptionEn: row.description_en,
     poster: row.poster_path,
     releaseYear: row.release_year,
+    tmdbId: row.tmdb_id ?? null,
+    tmdbMediaType: row.tmdb_media_type ?? null,
+    genreIds: (() => { try { return JSON.parse(row.genre_ids || "[]"); } catch { return []; } })(),
     collectionOrder: row.collection_order,
     progress: {
       status: row.status === "watched" ? "watched" : "unwatched",
@@ -152,7 +155,7 @@ async function listCatalog(env) {
     env.DB.prepare(`
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
-      m.poster_path, m.release_year, m.collection_order,
+      m.poster_path, m.release_year, m.tmdb_id, m.tmdb_media_type, m.genre_ids, m.collection_order,
       p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
@@ -176,7 +179,7 @@ async function getCatalogMovie(env, movieId) {
   const row = await env.DB.prepare(`
     SELECT
       m.id, m.category, m.title_ru, m.title_en, m.description_ru, m.description_en,
-      m.poster_path, m.release_year, m.collection_order,
+      m.poster_path, m.release_year, m.tmdb_id, m.tmdb_media_type, m.genre_ids, m.collection_order,
       p.status, p.rating, ${EFFECTIVE_RATING_SQL} AS effective_rating, p.is_favorite, p.last_watched_at, p.watch_count,
       p.notes, p.updated_at AS progress_updated_at
     FROM movies m
@@ -377,6 +380,62 @@ async function searchTmdb(url, env) {
   return json({ results });
 }
 
+async function listTmdbGenres(env) {
+  if (!env.TMDB_READ_TOKEN) return json({genres:[]},503);
+  const [ruMovie,ruTv,enMovie,enTv] = await Promise.all([
+    tmdbGet(env,"genre/movie/list",{language:"ru-RU"}),tmdbGet(env,"genre/tv/list",{language:"ru-RU"}),
+    tmdbGet(env,"genre/movie/list",{language:"en-US"}),tmdbGet(env,"genre/tv/list",{language:"en-US"}),
+  ]);
+  const merged=new Map();
+  for (const genre of [...(enMovie.genres||[]),...(enTv.genres||[])]) merged.set(genre.id,{id:genre.id,en:genre.name,ru:genre.name});
+  for (const genre of [...(ruMovie.genres||[]),...(ruTv.genres||[])]) {
+    const existing=merged.get(genre.id);
+    if(existing) existing.ru=genre.name;
+    else merged.set(genre.id,{id:genre.id,en:genre.name,ru:genre.name});
+  }
+  return json({genres:[...merged.values()]});
+}
+
+async function backfillTmdbGenres(request, env) {
+  if (!env.TMDB_READ_TOKEN) return json({error:"TMDB is not configured."},503);
+  const data=await readJson(request);
+  const cursor=data.cursor == null ? 0 : Number(data.cursor);
+  if (!Number.isSafeInteger(cursor) || cursor < 0) throw new ValidationError("Invalid backfill cursor.");
+  const rows=await env.DB.prepare(`SELECT id,category,title_ru,title_en,release_year
+    FROM movies WHERE id>? AND tmdb_id IS NULL ORDER BY id LIMIT 5`).bind(cursor).all();
+  const unresolved=[];
+  let updated=0;
+  for(const movie of rows.results||[]) {
+    try {
+      const media=tmdbMediaType(movie.category);
+      const primary=movie.title_ru || movie.title_en;
+      const result=await tmdbGet(env,`search/${media}`,{query:primary,language:"ru-RU",include_adult:"false",
+        ...(movie.release_year ? media==="tv"?{first_air_date_year:movie.release_year}:{year:movie.release_year}:{})});
+      const normalized=[movie.title_ru,movie.title_en].map(normalizeTitle).filter(Boolean);
+      const viable=(result.results||[]).filter(candidate=>{
+        const title=normalizeTitle(candidate.title||candidate.name);
+        const original=normalizeTitle(candidate.original_title||candidate.original_name);
+        const year=Number((candidate.release_date||candidate.first_air_date||"").slice(0,4))||null;
+        return (normalized.includes(title)||normalized.includes(original))
+          && (movie.release_year == null || year===movie.release_year);
+      });
+      if(viable.length!==1){unresolved.push(movie.id);continue;}
+      const details=await tmdbDetails(env,media,viable[0].id);
+      if(movie.release_year!=null && details.releaseYear!==movie.release_year){unresolved.push(movie.id);continue;}
+      const ids=details.genreIds.filter(n=>Number.isSafeInteger(n));
+      await env.DB.prepare(`UPDATE movies SET tmdb_id=?,tmdb_media_type=?,genre_ids=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND tmdb_id IS NULL`).bind(viable[0].id,media,JSON.stringify(ids),movie.id).run();
+      updated++;
+    } catch (err) {
+      console.warn("TMDB genre sync skipped record",movie.id,err?.message);
+      unresolved.push(movie.id);
+    }
+  }
+  const nextCursor=rows.results?.length?rows.results.at(-1).id:cursor;
+  const hasMore=await env.DB.prepare("SELECT id FROM movies WHERE id>? AND tmdb_id IS NULL LIMIT 1").bind(nextCursor).first();
+  return json({updated,unresolved,nextCursor,done:!hasMore});
+}
+
 async function tmdbSuggestions(url, env) {
   if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
   const offset = Number(url.searchParams.get("offset") || 0);
@@ -434,16 +493,19 @@ async function applyTmdbMatch(request, env, movieId) {
         ON CONFLICT(movie_id) DO UPDATE SET content_type=excluded.content_type,image=excluded.image,updated_at=CURRENT_TIMESTAMP`).bind(movieId,contentType,bytes),
       env.DB.prepare(`UPDATE movies SET title_en = COALESCE(?,title_en), description_en = COALESCE(?,description_en),
         description_ru = CASE WHEN description_ru IS NULL OR description_ru = '' THEN ? ELSE description_ru END,
-        release_year = COALESCE(release_year,?), poster_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        release_year = COALESCE(release_year,?), poster_path = ?,
+        tmdb_id=?, tmdb_media_type=?, genre_ids=?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
-          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,movieId),
+          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,
+          input.tmdbId,input.mediaType,JSON.stringify(data.genreIds),movieId),
     ]);
   } else {
     await env.DB.prepare(`UPDATE movies SET title_en=COALESCE(?,title_en), description_en=COALESCE(?,description_en),
       description_ru=CASE WHEN description_ru IS NULL OR description_ru='' THEN ? ELSE description_ru END,
-      release_year=COALESCE(release_year,?),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      release_year=COALESCE(release_year,?),tmdb_id=?,tmdb_media_type=?,genre_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
-        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,movieId).run();
+        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,
+        input.tmdbId,input.mediaType,JSON.stringify(data.genreIds),movieId).run();
   }
   return json({ movie: await getCatalogMovie(env,movieId), posterReplaced: Boolean(data.posterUrl) });
 }
@@ -497,37 +559,79 @@ async function createMovie(request, env) {
   if (input.status !== "watched" && input.rating != null) throw new ValidationError("Unwatched content cannot be rated.");
   if (input.status === "watched" && input.category !== "series" && !input.lastWatchedAt)
     throw new ValidationError("A watched movie needs its viewing date.");
-  if (input.status === "watched" && input.category === "series")
-    throw new ValidationError("Add the series to your watchlist and log seasons in a viewing cycle.");
-  if (input.status === "watched" && !Number.isInteger(input.rating))
+  const watchedSeries = input.status === "watched" && input.category === "series";
+  if (watchedSeries) {
+    if (!Number.isInteger(input.seasonNumber) || input.seasonNumber < 1 || input.seasonNumber > 200)
+      throw new ValidationError("Choose the first recorded season (1–200).");
+    const firstDay = validateViewingDay(input.startedAt);
+    const finalDay = validateViewingDay(input.lastWatchedAt);
+    if (finalDay < firstDay) throw new ValidationError("A series end date must not precede its start date.");
+    if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)
+      throw new ValidationError("Rate the completed season from 1 to 5.");
+  } else if (input.status === "watched" && (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)) {
     throw new ValidationError("A watched movie requires a 1–5 rating.");
+  }
   if (input.status === "watched") validateWatchDate(input.lastWatchedAt);
   const existing = await findExistingMovie(env, {title, titleEn, category:input.category, releaseYear});
   if (existing) return json({error:"A title with this name, category and release year is already in your library.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   const posterFromTmdb = tmdbPosterUrl(input.posterFromTmdb);
+  let tmdbReference = null;
+  if (Number.isSafeInteger(input.tmdbId) && input.tmdbId > 0
+      && input.tmdbMediaType === tmdbMediaType(input.category)) {
+    try {
+      const details = await tmdbDetails(env, input.tmdbMediaType, input.tmdbId);
+      const titleMatches = [details.title,details.titleEn].map(normalizeTitle)
+        .some(name=>name && [title,titleEn].map(normalizeTitle).includes(name));
+      if (titleMatches && (releaseYear == null || details.releaseYear === releaseYear))
+        tmdbReference = {id:input.tmdbId,mediaType:input.tmdbMediaType,
+          genreIds:details.genreIds.filter(n=>Number.isSafeInteger(n))};
+    } catch (error) { console.warn("TMDB metadata unavailable; saved without genres",error?.message); }
+  }
   const nextOrder = await env.DB.prepare(
     "SELECT COALESCE(MAX(collection_order), 0) + 1 AS value FROM movies",
   ).first();
   const insert = await env.DB.prepare(`
     INSERT INTO movies (
       category, title_ru, title_en, description_ru, description_en,
-      poster_path, release_year, collection_order
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1)).run();
+      poster_path, release_year, collection_order, tmdb_id, tmdb_media_type, genre_ids
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(input.category, title, titleEn, description, descriptionEn, posterFromTmdb || "/poster-placeholder.svg", releaseYear, Number(nextOrder?.value || 1),
+    tmdbReference?.id ?? null, tmdbReference?.mediaType ?? null, JSON.stringify(tmdbReference?.genreIds || [])).run();
 
   const movieId = Number(insert.meta.last_row_id);
 
-  const progressInput = {
-    status: input.status === "watched" ? "watched" : "unwatched",
-    rating: input.status === "watched" && input.category !== "series" ? input.rating ?? null : null,
-  };
-  if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
-  const normalized = normalizeProgressPatch(progressInput, {});
-  await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
-  if (progressInput.rating != null) {
-    await env.DB.prepare("UPDATE watch_history SET rating=? WHERE movie_id=? AND watched_at=?")
-      .bind(progressInput.rating,movieId,normalized.value.lastWatchedAt).run();
-    await refreshCurrentRating(env,movieId);
+  // A series' first historical viewing is a completed, rated season inside a
+  // completed cycle. Never create a fake film-level watch_history record for TV.
+  if (watchedSeries) {
+    try {
+      const cycleResult = await env.DB.prepare(
+        "INSERT INTO series_cycles(movie_id,started_at,ended_at,outcome) VALUES (?,?,?,'completed')"
+      ).bind(movieId,input.startedAt,input.lastWatchedAt).run();
+      const cycleId = Number(cycleResult.meta.last_row_id);
+      const entryResult = await env.DB.prepare(
+        "INSERT INTO season_viewings(movie_id,cycle_id,season_number,started_at,finished_at,rating) VALUES (?,?,?,?,?,?)"
+      ).bind(movieId,cycleId,input.seasonNumber,input.startedAt,input.lastWatchedAt,input.rating).run();
+      await registerRating(env,movieId,input.rating,"season",Number(entryResult.meta.last_row_id));
+      await refreshViewingSummary(env,movieId);
+    } catch (error) {
+      // Compensating delete affects only the newly created row and cascades to its
+      // new cycle, seasons and rating changes; existing collection stays untouched.
+      await env.DB.prepare("DELETE FROM movies WHERE id=?").bind(movieId).run();
+      throw error;
+    }
+  } else {
+    const progressInput = {
+      status: input.status === "watched" ? "watched" : "unwatched",
+      rating: input.status === "watched" ? input.rating ?? null : null,
+    };
+    if (input.lastWatchedAt) progressInput.lastWatchedAt = input.lastWatchedAt;
+    const normalized = normalizeProgressPatch(progressInput, {});
+    await saveNormalizedProgress(env, movieId, normalized, new Date().toISOString());
+    if (progressInput.rating != null) {
+      await env.DB.prepare("UPDATE watch_history SET rating=? WHERE movie_id=? AND watched_at=?")
+        .bind(progressInput.rating,movieId,normalized.value.lastWatchedAt).run();
+      await refreshCurrentRating(env,movieId);
+    }
   }
   if (input.wantToWatch === true) {
     await env.DB.prepare(`INSERT INTO member_progress(movie_id,member_id,wants_to_watch) VALUES (?,1,1)
@@ -852,7 +956,10 @@ async function saveSeasonViewing(request,env,movieId) {
   const cycle=await env.DB.prepare("SELECT id,outcome FROM series_cycles WHERE id=? AND movie_id=?")
     .bind(cycleId,movieId).first();
   if(!cycle)return json({error:"Viewing cycle not found."},404);
-  if(!entryId&&cycle.outcome!=="watching")return json({error:"Start a new cycle to add viewings."},409);
+  // Allow adding older completed seasons to a finished historical cycle.
+  // A closed cycle must never contain an unfinished or unrated new season.
+  if(!entryId&&cycle.outcome!=="watching"&&(!finish||rating===null))
+    return json({error:"Historical finished cycles only accept completed, rated seasons."},422);
   if(entryId){
     await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
       WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,entryId,movieId).run();
@@ -987,7 +1094,7 @@ async function deleteViewingEvent(env, movieId, eventId) {
 }
 
 async function editMovie(request, env, movieId) {
-  const old = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  const old = await env.DB.prepare("SELECT id,category,release_year FROM movies WHERE id = ?").bind(movieId).first();
   if (!old) return json({ error: "Movie not found." }, 404);
   const input = await readJson(request);
   const title = optionalText(input.title, "Title", 160);
@@ -1002,9 +1109,16 @@ async function editMovie(request, env, movieId) {
   if (existing) return json({error:"Another title with this name, category and release year already exists.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   await env.DB.prepare(`
     UPDATE movies SET title_ru = ?, title_en = ?, category = ?,
-      description_ru = ?, description_en = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      description_ru = ?, description_en = ?, release_year = ?,
+      tmdb_id = CASE WHEN ? THEN NULL ELSE tmdb_id END,
+      tmdb_media_type = CASE WHEN ? THEN NULL ELSE tmdb_media_type END,
+      genre_ids = CASE WHEN ? THEN '[]' ELSE genre_ids END,
+      updated_at = CURRENT_TIMESTAMP WHERE id = ?
   `).bind(title, titleEn, input.category,
-    optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year, movieId).run();
+    optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year,
+    Number(old.category!==input.category || old.release_year!==year),
+    Number(old.category!==input.category || old.release_year!==year),
+    Number(old.category!==input.category || old.release_year!==year), movieId).run();
   return json({ movie: await getCatalogMovie(env, movieId) });
 }
 
@@ -1048,10 +1162,11 @@ async function restoreBackup(env, snapshot) {
     const poster = movie.poster?.startsWith("/api/posters/") && !posterIds.has(movie.id) ? "/film-reel.png" : (movie.poster || "/film-reel.png");
     statements.push(env.DB.prepare(`
       INSERT INTO movies(id, category, title_ru, title_en, description_ru, description_en,
-        poster_path, release_year, collection_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        poster_path, release_year, collection_order, tmdb_id, tmdb_media_type, genre_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(movie.id, movie.category, movie.title, movie.titleEn || null, movie.description || null,
-      movie.descriptionEn || null, poster, movie.releaseYear ?? null, movie.collectionOrder));
+      movie.descriptionEn || null, poster, movie.releaseYear ?? null, movie.collectionOrder,
+      movie.tmdbId ?? null, movie.tmdbMediaType ?? null, JSON.stringify(movie.genreIds || [])));
     const p = movie.progress;
     statements.push(env.DB.prepare(`
       INSERT INTO movie_progress(movie_id, status, rating, is_favorite, last_watched_at, watch_count, notes, updated_at)
@@ -1161,6 +1276,8 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/catalog/alerts/dismissed" && request.method === "POST")
     return dismissCatalogAlert(request,env);
   if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
+  if (url.pathname === "/api/tmdb/genres" && request.method === "GET") return listTmdbGenres(env);
+  if (url.pathname === "/api/tmdb/genres/backfill" && request.method === "POST") return backfillTmdbGenres(request, env);
   if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
   const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
   if (tmdbApply && request.method === "POST") return applyTmdbMatch(request,env,Number(tmdbApply[1]));

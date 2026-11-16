@@ -32,11 +32,12 @@ test("watch history shows date and compact editable rating in same row",()=>{
   assert.doesNotMatch(page,/className="watchEventRating"><Stars/);
   assert.match(css,/\.historyPanel \.watchEventLine \{ display:flex;/);
 });
-test("one custom calendar picks a season date range without native date width overflow",()=>{
-  assert.match(page,/function SeasonRangeCalendar/);
-  assert.match(page,/className="seasonRangeTrigger"/);
-  assert.match(page,/className="seasonCalendarGrid"/);
-  assert.match(css,/\.seasonCalendarGrid \{ display:grid; grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+test("series start/end and movie dates share the native iOS picker",()=>{
+  const range=page.slice(page.indexOf("function SeasonRangeCalendar("),page.indexOf("function SeasonTracker("));
+  assert.match(range,/className="seasonNativeDateRange"/);
+  assert.equal((range.match(/<ViewingDateField/g)||[]).length,2);
+  assert.match(css,/\.seasonNativeDateRange/);
+  assert.doesNotMatch(range,/seasonCalendarGrid|changeMonth/);
   assert.doesNotMatch(page,/CompactDateField/);
 });
 

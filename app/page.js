@@ -8,7 +8,7 @@ import { findDuplicateTitle, findPotentialDuplicatePairs } from "@/lib/title-dup
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
 
-const statusOrder = ["unwatched", "watched"];
+const statusOrder = ["watched"];
 
 function Icon({ name, size = 20, filled = false }) {
   const props = {
@@ -149,7 +149,7 @@ function todayLocal() {
 
 function MovieCard({ movie, language, labels, onOpen, view }) {
   const watched = movie.progress.status === "watched";
-  const inWatchlist = Boolean(personalFor(movie, 1).wantsToWatch) && !watched;
+  const inWatchlist = !watched;
   const rating = movie.progress.rating;
   const title = language === "en" && movie.titleEn ? movie.titleEn : movie.title;
 
@@ -237,18 +237,21 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     status: "watchlist",
     rating: null,
     lastWatchedAt: "",
+    startedAt: "",
+    seasonNumber: 1,
     description: "",
     wantToWatch: true,
   };
   const [form, setForm] = useState(initialMovie ? {
     title: initialMovie.title || "", titleEn: initialMovie.titleEn || "", descriptionEn: initialMovie.descriptionEn || "", category: initialMovie.category,
     releaseYear: initialMovie.releaseYear || "", status: initialMovie.progress.status, rating: initialMovie.progress.rating,
-    lastWatchedAt: initialMovie.progress.lastWatchedAt?.slice(0, 10) || "", description: initialMovie.description || "",
+    lastWatchedAt: initialMovie.progress.lastWatchedAt?.slice(0, 10) || "", startedAt:"",seasonNumber:1,description: initialMovie.description || "",
   } : initialForm);
   const [poster, setPoster] = useState(null);
   const [tmdbMatches, setTmdbMatches] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [tmdbPoster, setTmdbPoster] = useState(null);
+  const [tmdbIdentity, setTmdbIdentity] = useState(null);
   const [tmdbError, setTmdbError] = useState("");
   const searchOnTmdb = async () => {
     if (form.title.trim().length < 2) return;
@@ -268,8 +271,10 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     setForm((current) => ({ ...current, title: match.title || current.title,
       titleEn: match.titleEn || "", description: match.description || "", descriptionEn: match.descriptionEn || "",
       releaseYear: match.releaseYear || "", category: match.category || current.category,
-      ...(match.category==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
-    setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
+      ...(match.category==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
+    setTmdbPoster(match.posterUrl || null);
+    setTmdbIdentity({id:match.tmdbId || match.id,mediaType:match.mediaType || (match.category==="series"?"tv":"movie")});
+    setTmdbMatches([]);
   };
   const [preview, setPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -285,23 +290,26 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     return () => URL.revokeObjectURL(url);
   }, [poster]);
 
-  const update = (field,value)=>setForm(current=>({...current,[field]:value,
-    ...(field==="category"&&value==="series"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
+  const update = (field,value)=>{
+    if (["titleEn","category","releaseYear"].includes(field)) setTmdbIdentity(null);
+    setForm(current=>({...current,[field]:value,
+    ...(field==="category"&&value==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
     ...(field==="status"?{wantToWatch:value==="watchlist",
       rating:value==="watched"?current.rating:null,
-      lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):""}:{}),
-  }));
+      lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):"",
+      startedAt:value==="watched"?(current.startedAt||todayLocal()):""}:{}),
+  }));};
   const submit = async (event) => {
     event.preventDefault();
     if(!form.title.trim()){setError(labels.locale==="en-US"?"Enter a title.":"Укажите название.");return;}
-    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null)){
+    if(!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null || (form.category==="series" && (!form.startedAt || form.lastWatchedAt<form.startedAt)))){
       setError(labels.locale==="en-US"?"Choose viewing date and rating.":"Укажите дату просмотра и оценку.");
       return;
     }
     setSubmitting(true);
     setError("");
     try {
-      await onCreate(form, poster, tmdbPoster);
+      await onCreate(form, poster, tmdbPoster, tmdbIdentity);
     } catch (submitError) {
       setError(submitError.message || labels.addMovie.error);
       setSubmitting(false);
@@ -321,7 +329,10 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           <div className="addMovieFields">
             <label className="wideField">
               <span>{labels.addMovie.name}</span>
-              <input required maxLength={160} value={form.title} onChange={(event) => update("title", event.target.value)} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+              <span className="addTitleInput">
+                <input required maxLength={160} value={form.title} onChange={(event) => {update("title", event.target.value);setTmdbIdentity(null);setTmdbMatches([]);setTmdbError("");}} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+                {form.title && <button type="button" aria-label={labels.locale==="en-US"?"Clear movie search":"Очистить название"} title={labels.locale==="en-US"?"Clear":"Очистить"} onClick={()=>{update("title","");setTmdbIdentity(null);setTmdbMatches([]);setTmdbPoster(null);setTmdbError("");}}><Icon name="close" size={17}/></button>}
+              </span>
             </label>
             {!initialMovie && <div className="tmdbSearch wideField">
               <small className="tmdbSearchHint">{labels.locale === "en-US" ? "Optional year narrows results. If nothing is found, try the original title or tmdb:62320 (TMDB ID)." : "Укажи год выпуска для точного поиска. Можно искать по оригинальному названию или по ID, например tmdb:62320."}</small>
@@ -350,16 +361,29 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
               <span>{labels.addMovie.status}</span>
               <select value={form.status} onChange={(event) => update("status", event.target.value)}>
                 <option value="watchlist">{labels.family.watchlist}</option>
-                {form.category!=="series"&&<option value="watched">{labels.catalog.watched}</option>}
+                <option value="watched">{labels.catalog.watched}</option>
               </select>
             </label>}
-            {!initialMovie && form.status==="watched" && <div className="addViewingDate">
-              <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
-              <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
-                language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
-                onChange={(value)=>update("lastWatchedAt",value)}/>
-            </div>}
-            {!initialMovie && form.status === "watched" && form.category !== "series" && <div className="addRating wideField">
+            {!initialMovie && form.status==="watched" && (form.category==="series" ?
+              <div className="wideField addSeriesHistory">
+                <label><span>{labels.locale==="en-US"?"First viewed season":"Первый просмотренный сезон"}</span>
+                  <select value={form.seasonNumber} onChange={event=>update("seasonNumber",Number(event.target.value))}>
+                    {Array.from({length:30},(_,index)=>index+1).map(n=><option key={n} value={n}>{labels.locale==="en-US"?"Season":"Сезон"} {n}</option>)}
+                  </select></label>
+                <SeasonRangeCalendar language={labels.locale==="en-US"?"en":"ru"}
+                  start={form.startedAt} end={form.lastWatchedAt}
+                  onChange={(start,end)=>setForm(current=>({...current,startedAt:start,lastWatchedAt:end}))}/>
+                <small>{labels.locale==="en-US"
+                  ?"Record a completed season now. You can add the remaining seasons and later rewatches in the series card."
+                  :"Сейчас запишите один завершённый сезон. Остальные сезоны и пересмотры можно добавить в карточке сериала."}</small>
+              </div> :
+              <div className="addViewingDate">
+                <span className="seasonFieldCaption">{labels.addMovie.watchedAt} *</span>
+                <ViewingDateField value={form.lastWatchedAt} label={labels.addMovie.watchedAt}
+                  language={labels.locale==="en-US"?"en":"ru"} max={todayLocal()}
+                  onChange={(value)=>update("lastWatchedAt",value)}/>
+              </div>)}
+            {!initialMovie && form.status === "watched" && <div className="addRating wideField">
               <span>{labels.addMovie.rating} *</span>
               <Stars value={form.rating || 0} onChange={(rating) => update("rating", rating)} label={labels.addMovie.rating} />
             </div>}
@@ -381,7 +405,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           </label>
 
           {error && <p className="formError" role="alert">{error}</p>}
-          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null))}>
+          <button type="submit" className="primaryButton addMovieSubmit" disabled={submitting || !form.title.trim() || (!initialMovie && form.status==="watched" && (!form.lastWatchedAt || form.rating==null || (form.category==="series" && (!form.startedAt || form.lastWatchedAt<form.startedAt))))}>
             {submitting ? <span className="spinner small" /> : <Icon name="plus" size={18} />}
             {submitting ? labels.addMovie.submitting : initialMovie ? labels.family.save : labels.addMovie.submit}
           </button>
@@ -396,62 +420,28 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 // selected start is a valid, unfinished viewing period.
 function SeasonRangeCalendar({start, end, onChange, language}) {
   const en=language==="en";
-  const [open,setOpen]=useState(false);
-  const [month,setMonth]=useState(()=> (start||todayLocal()).slice(0,7));
-  const [choosingEnd,setChoosingEnd]=useState(Boolean(start&&!end));
-  const locale=en?"en-US":"ru-RU";
-  const asDate=(value)=>new Date(`${value}T12:00:00Z`);
-  const pretty=(value)=>value?new Intl.DateTimeFormat(locale,{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(asDate(value)):"—";
-  const year=Number(month.slice(0,4)),index=Number(month.slice(5,7))-1;
-  const startWeek=(new Date(Date.UTC(year,index,1)).getUTCDay()+6)%7;
-  const daysInMonth=new Date(Date.UTC(year,index+1,0)).getUTCDate();
-  const allDays=Array.from({length:Math.ceil((startWeek+daysInMonth)/7)*7},(_,i)=>{
-    const day=i-startWeek+1;
-    return day>=1&&day<=daysInMonth?day:null;
-  });
-  const iso=(day)=>`${year}-${String(index+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-  const changeMonth=(offset)=>{
-    const date=new Date(Date.UTC(year,index+offset,1));
-    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
-  };
-  const choose=(day)=>{
-    const date=iso(day);
-    if(!choosingEnd||!start||date<start){
-      onChange(date,"");setChoosingEnd(true);
-    }else{
-      onChange(start,date);setChoosingEnd(false);setOpen(false);
-    }
-  };
-  const toggle=()=>{
-    if(!open){setMonth((start||todayLocal()).slice(0,7));setChoosingEnd(Boolean(start&&!end));}
-    setOpen(value=>!value);
-  };
-  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
-  const monthTitle=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(year,index,1)));
+  const max=todayLocal();
   return <div className="seasonRangeField">
     <span className="seasonFieldCaption">{en?"Viewing period":"Период просмотра"}</span>
-    <button type="button" className="seasonRangeTrigger" onClick={toggle} aria-expanded={open} aria-label={en?"Choose viewing period":"Выбрать период просмотра"}>
-      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty(start)} <span className="seasonRangeSeparator">→</span> {end?pretty(end):(en?"Watching":"Смотрим")}</span>
-    </button>
-    {open&&<div className="seasonCalendar" role="group" aria-label={en?"Viewing dates":"Даты просмотра"}>
-      <div className="seasonCalendarHead">
-        <button type="button" onClick={()=>changeMonth(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
-        <strong>{monthTitle}</strong>
-        <button type="button" onClick={()=>changeMonth(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
-      </div>
-      <p className="seasonCalendarHint">{choosingEnd&&start?(en?"Choose the end date, or leave the season in progress":"Выберите дату завершения или оставьте сезон незавершённым"):(en?"Choose the start date":"Выберите дату начала")}</p>
-      <div className="seasonCalendarGrid">
-        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
-        {allDays.map((day,position)=>day?<button key={position} type="button"
-          className={["seasonCalendarDay",iso(day)===start?"start":"",iso(day)===end?"end":"",start&&end&&iso(day)>start&&iso(day)<end?"inside":""].filter(Boolean).join(" ")}
-          aria-pressed={iso(day)===start||iso(day)===end} onClick={()=>choose(day)}>{day}</button>:<span key={position}/>)}
-      </div>
-      <div className="seasonCalendarActions">
-        <button type="button" onClick={()=>{onChange(start||todayLocal(),"");setChoosingEnd(true);setOpen(false);}}>{en?"Still watching":"Ещё смотрим"}</button>
-        <button type="button" onClick={()=>{onChange(todayLocal(),"");setMonth(todayLocal().slice(0,7));setChoosingEnd(true);}}>{en?"Start today":"Начать сегодня"}</button>
-        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
-      </div>
-    </div>}
+    <div className="seasonNativeDateRange">
+      <label>
+        <span>{en?"Started":"Начали смотреть"}</span>
+        <ViewingDateField value={start} max={max} language={language}
+          label={en?"Season start date":"Дата начала просмотра"}
+          onChange={value=>onChange(value,"")} />
+      </label>
+      <label>
+        <span>{en?"Finished":"Закончили смотреть"}</span>
+        <ViewingDateField value={end} max={max} disabled={!start} language={language}
+          label={en?"Season finish date":"Дата окончания просмотра"}
+          onChange={value=>onChange(start,value&&value<start?start:value)} />
+      </label>
+    </div>
+    <div className="seasonNativeActions">
+      <button type="button" onClick={()=>onChange(start||todayLocal(),"")}>
+        {en?"Still watching / no end date":"Ещё смотрим / без даты окончания"}
+      </button>
+    </div>
   </div>;
 }
 
@@ -533,6 +523,14 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
     }catch(err){setError(err.message);}
     finally{setSaving(false);}
   };
+  const addHistoricalSeason=(cycle)=>{
+    setEditingId(null);setEditingCycleId(cycle.id);
+    setSeasonNumber(Math.min(200,Math.max(1,...cycle.seasons.map(entry=>entry.seasonNumber))+1));
+    setStartedAt(cycle.endedAt||cycle.startedAt);
+    setFinishedAt(cycle.endedAt||cycle.startedAt);
+    setRating(null);
+    setError("");
+  };
   const edit=(entry,cycle)=>{
     setEditingId(entry.id);setEditingCycleId(cycle.id);setSeasonNumber(entry.seasonNumber);
     setStartedAt(entry.startedAt);setFinishedAt(entry.finishedAt||"");setRating(entry.rating);
@@ -583,6 +581,11 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
             </div>}
           </li>)}
         </ul>
+        {cycle.outcome!=="watching"&&<div className="seasonActions">
+          <button type="button" disabled={saving} onClick={()=>addHistoricalSeason(cycle)}>
+            {en?"+ Add another season to this viewing":"+ Добавить сезон в этот просмотр"}
+          </button>
+        </div>}
         {cycle.outcome==="watching"&&<div className="seriesCycleFinish">
           <p>{en?"End this viewing cycle to publish its average rating. Unwatched seasons won't be included.":
             "Завершите цикл, чтобы пересчитать общую оценку. Непросмотренные сезоны не учитываются."}</p>
@@ -603,10 +606,11 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
         </div>}
       </section>)}
     </div>
-    {!loading&&!active&&!editingId&&<button type="button" className="seriesNewCycleButton" disabled={saving}
+    {!loading&&!active&&!editingId&&!editingCycleId&&<button type="button" className="seriesNewCycleButton" disabled={saving}
       onClick={createCycle}>{en?"+ Start a viewing cycle":"+ Начать новый цикл просмотра"}</button>}
-    {(active||editingId)&&<form className="seasonForm" onSubmit={submit} noValidate>
+    {(active||editingId||editingCycleId)&&<form className="seasonForm" onSubmit={submit} noValidate>
       <h4 className="seasonFormTitle">{editingId?(en?"Edit season":"Изменить просмотр сезона"):
+        editingCycleId?(en?"Add season to selected viewing":"Добавить сезон в выбранный просмотр"):
         (en?"Add season to current cycle":"Добавить сезон в текущий цикл")}</h4>
       <label className="seasonSelectField"><span className="seasonFieldCaption">{en?"Season":"Сезон"}</span>
         <select value={seasonNumber} onChange={event=>setSeasonNumber(Number(event.target.value))}>
@@ -624,7 +628,7 @@ function SeasonTracker({ movie, language, onMovieChanged }) {
         disabled={saving||!startedAt||(Boolean(finishedAt)&&rating==null)}>
         {saving?"…":editingId?(en?"Save changes":"Сохранить изменения"):(en?"Save season":"Записать сезон")}
         </button>
-        {editingId&&<button type="button" onClick={reset}>{en?"Cancel":"Отмена"}</button>}
+        {(editingId||editingCycleId)&&<button type="button" onClick={reset}>{en?"Cancel":"Отмена"}</button>}
       </div>
     </form>}
     {!loading&&!active&&!editingId&&error&&<p className="formError" role="alert">{error}</p>}
@@ -650,6 +654,11 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("random");
+  const [sortDirection, setSortDirection] = useState("desc");
+  const [genre, setGenre] = useState("all");
+  const [genreOptions, setGenreOptions] = useState([]);
+  const [genreSyncing, setGenreSyncing] = useState(false);
+  const [genreSyncMessage, setGenreSyncMessage] = useState("");
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
@@ -674,6 +683,45 @@ export default function Home() {
   const t = translations[language];
 
   const personal = (movie) => personalFor(movie, activeMember);
+  const genreName = (id) => {
+    const entry=genreOptions.find(item=>item.id===id);
+    return entry ? (language==="en"?entry.en:entry.ru) : String(id);
+  };
+  const loadGenres = useCallback(async()=>{
+    try {
+      const response=await fetch("/api/tmdb/genres",{credentials:"same-origin"});
+      if(!response.ok) return;
+      const data=await response.json();
+      setGenreOptions(data.genres||[]);
+    } catch { /* Genres remain filterable by ID during a TMDB outage. */ }
+  }, []);
+  useEffect(()=>{
+    if(authState==="authenticated") loadGenres();
+  },[authState,loadGenres]);
+  const availableGenres = useMemo(()=>{
+    const ids=new Set(movies.flatMap(movie=>movie.genreIds||[]));
+    return [...ids].sort((a,b)=>genreName(a).localeCompare(genreName(b),language==="en"?"en":"ru"));
+  },[movies,genreOptions,language]);
+  const syncExistingGenres = async()=>{
+    if(genreSyncing||syncState==="offline") return;
+    setGenreSyncing(true);setGenreSyncMessage("");
+    let cursor=0,updated=0,unresolved=0;
+    try{
+      for(let batch=0;batch<500;batch++){
+        const response=await fetch("/api/tmdb/genres/backfill",{method:"POST",credentials:"same-origin",
+          headers:{"content-type":"application/json"},body:JSON.stringify({cursor})});
+        const data=await response.json();
+        if(!response.ok) throw new Error(data.error||"TMDB unavailable");
+        updated+=data.updated||0;unresolved+=(data.unresolved||[]).length;
+        cursor=data.nextCursor;
+        setGenreSyncMessage(language==="en"?`Matched: ${updated}. Needs review: ${unresolved}.`:`Сопоставлено: ${updated}. Требуют проверки: ${unresolved}.`);
+        if(data.done)break;
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      await loadCatalog();await loadGenres();
+    }catch(error){setGenreSyncMessage(error.message||"TMDB unavailable");}
+    finally{setGenreSyncing(false);}
+  };
 
   const loadLibraryAlerts = useCallback(async () => {
     try {
@@ -1112,7 +1160,7 @@ export default function Home() {
     requireAccess(() => setAddMovieOpen(true));
   };
 
-  const createMovie = async (form, posterFile, tmdbPoster) => {
+  const createMovie = async (form, posterFile, tmdbPoster, tmdbIdentity) => {
     const duplicate = findDuplicateTitle(movies, form);
     if (duplicate) {
       throw new Error(language === "en"
@@ -1130,8 +1178,12 @@ export default function Home() {
         releaseYear: form.releaseYear || null,
         posterFromTmdb: posterFile ? null : tmdbPoster,
         lastWatchedAt: form.status === "watched" ? form.lastWatchedAt || null : null,
+        startedAt: form.category==="series" && form.status==="watched" ? form.startedAt : null,
+        seasonNumber: form.category==="series" && form.status==="watched" ? Number(form.seasonNumber) : null,
         status: form.status === "watched" ? "watched" : "unwatched",
         wantToWatch: form.status === "watchlist",
+        tmdbId:tmdbIdentity?.id ?? null,
+        tmdbMediaType:tmdbIdentity?.mediaType ?? null,
       }),
     });
     const data = await response.json();
@@ -1185,19 +1237,33 @@ export default function Home() {
     let result = movies.filter((movie) => {
       if (category !== "all" && movie.category !== category) return false;
       if (!matchesMovieQuery(movie, query, t.locale)) return false;
-      if (status === "watchlist" && !personalFor(movie, activeMember).wantsToWatch) return false;
+      if (status === "watchlist" && movie.progress.status === "watched" && !personalFor(movie, activeMember).wantsToWatch) return false;
+      if (genre !== "all" && !(movie.genreIds||[]).includes(Number(genre))) return false;
       if (statusOrder.includes(status) && movie.progress.status !== status) return false;
       return true;
     });
 
     if (sort === "random") result = randomizeMovies(result, shuffleSeed);
-    if (sort === "rating") result = [...result].sort((a, b) => (b.progress.rating || 0) - (a.progress.rating || 0));
-    if (sort === "oldest") result = sortOldestWatched(result);
+    if (sort === "rating" || sort === "year") {
+      const key=sort==="rating"?"rating":"releaseYear";
+      result = [...result].sort((a,b)=>{
+        const left=sort==="rating"?a.progress.rating:a.releaseYear;
+        const right=sort==="rating"?b.progress.rating:b.releaseYear;
+        if(left==null&&right==null)return a.collectionOrder-b.collectionOrder;
+        if(left==null)return 1;
+        if(right==null)return -1;
+        return (Number(left)-Number(right))*(sortDirection==="asc"?1:-1) || a.collectionOrder-b.collectionOrder;
+      });
+    }
+    if (sort === "oldest") {
+      result = sortOldestWatched(result);
+      if (sortDirection === "asc") result.reverse();
+    }
     return result;
-  }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
+  }, [category, genre, movies, query, shuffleSeed, sort, sortDirection, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
-  const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
+  const watchlistCount = movies.filter((movie) => movie.progress.status !== "watched" || personalFor(movie, activeMember).wantsToWatch).length;
   const ratedCount = movies.filter((movie) => movie.progress.rating).length;
   const potentialDuplicatePairs = useMemo(() => findPotentialDuplicatePairs(movies), [movies]);
   const visibleLibraryAlerts = libraryAlertsReady
@@ -1338,11 +1404,21 @@ export default function Home() {
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
             <option value="watchlist">{t.family.watchlist}</option>
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
-            <option value="random">{language === "en" ? "Default order" : "Обычный порядок"}</option>
-            <option value="rating">{language === "en" ? "Highest rated" : "Сначала лучшие"}</option>
-            <option value="oldest">{language === "en" ? "Longest since watched" : "Давно не смотрели"}</option>
+          <select value={genre} onChange={event=>setGenre(event.target.value)} aria-label={language==="en"?"Genre":"Жанр"}>
+            <option value="all">{language==="en"?"All genres":"Все жанры"}</option>
+            {availableGenres.map(id=><option value={id} key={id}>{genreName(id)}</option>)}
           </select>
+          <select value={sort} onChange={(event) => {setSort(event.target.value);setSortDirection("desc");}} aria-label={t.catalog.collectionOrder}>
+            <option value="random">{language === "en" ? "Default order" : "Обычный порядок"}</option>
+            <option value="rating">{language === "en" ? "By rating" : "По оценке"}</option>
+            <option value="year">{language === "en" ? "By release year" : "По году выпуска"}</option>
+            <option value="oldest">{language === "en" ? "Time since watched" : "Давно не смотрели"}</option>
+          </select>
+          {sort!=="random"&&<button type="button" className="sortDirectionToggle" onClick={()=>setSortDirection(current=>current==="desc"?"asc":"desc")}
+            aria-label={language==="en"?(sortDirection==="desc"?"Reverse order (ascending)":"Reverse order (descending)"):(sortDirection==="desc"?"Изменить порядок: по возрастанию":"Изменить порядок: по убыванию")}
+            title={language==="en"?(sortDirection==="desc"?"Descending — tap to reverse":"Ascending — tap to reverse"):(sortDirection==="desc"?"По убыванию — нажмите для смены":"По возрастанию — нажмите для смены")}>
+            {sortDirection==="desc"?"↓":"↑"}
+          </button>}
           <div className="viewSwitch" aria-label={t.nav.collection}>
             <button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid"><Icon name="grid" size={18} /></button>
             <button type="button" className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List"><Icon name="list" size={18} /></button>
@@ -1402,6 +1478,14 @@ export default function Home() {
               <div><strong>{ratedCount}</strong><span>{language === "en" ? "Rated" : "С оценкой"}</span></div>
               <div><strong>{watchlistCount}</strong><span>{language === "en" ? "Watchlist" : "Хочу посмотреть"}</span></div>
             </div>
+            <section className="libraryGenreSync">
+              <h3>{language==="en"?"TMDB genres":"Жанры TMDB"}</h3>
+              <p>{language==="en"?"Fill genres for existing titles using exact TMDB title/year matches. Uncertain matches are skipped; titles, ratings and posters are not changed.":"Подобрать жанры существующим фильмам по точному совпадению названия и года. Неоднозначные совпадения пропускаются; названия, оценки и постеры не изменяются."}</p>
+              <button type="button" disabled={genreSyncing||syncState==="offline"} onClick={syncExistingGenres}>
+                {genreSyncing?(language==="en"?"Updating genres…":"Подбираем жанры…"):(language==="en"?"Update existing genres":"Подобрать жанры для коллекции")}
+              </button>
+              {genreSyncMessage&&<p role="status">{genreSyncMessage}</p>}
+            </section>
             <section className="libraryAlerts" aria-labelledby="libraryAlertsHeading">
               <h3 id="libraryAlertsHeading">{language === "en" ? "Catalog warnings" : "Предупреждения каталога"}
                 {visibleLibraryAlerts.length > 0 && <span className="libraryAlertCount">{visibleLibraryAlerts.length}</span>}
@@ -1453,6 +1537,9 @@ export default function Home() {
               <h2>{language === "en" && selected.titleEn ? selected.titleEn : selected.title}</h2>
               {(language === "en" ? selected.descriptionEn || selected.description : selected.description) && <p className="modalLead">{language === "en" ? selected.descriptionEn || selected.description : selected.description}</p>}
               {selected.releaseYear && <span className="modalYear">{selected.releaseYear}</span>}
+              {!!selected.genreIds?.length && <div className="movieGenreTags" aria-label={language==="en"?"Genres":"Жанры"}>
+                {selected.genreIds.map(id=><span key={id}>{genreName(id)}</span>)}
+              </div>}
 
               <div className="familyRatings"><span>{selected.category === "series"
                 ? (language === "en" ? "Average season rating" : "Средняя оценка сезонов")
