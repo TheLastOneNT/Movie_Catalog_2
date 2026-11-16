@@ -953,7 +953,10 @@ async function saveSeasonViewing(request,env,movieId) {
   const cycle=await env.DB.prepare("SELECT id,outcome FROM series_cycles WHERE id=? AND movie_id=?")
     .bind(cycleId,movieId).first();
   if(!cycle)return json({error:"Viewing cycle not found."},404);
-  if(!entryId&&cycle.outcome!=="watching")return json({error:"Start a new cycle to add viewings."},409);
+  // Allow adding older completed seasons to a finished historical cycle.
+  // A closed cycle must never contain an unfinished or unrated new season.
+  if(!entryId&&cycle.outcome!=="watching"&&(!finish||rating===null))
+    return json({error:"Historical finished cycles only accept completed, rated seasons."},422);
   if(entryId){
     await env.DB.prepare(`UPDATE season_viewings SET season_number=?,started_at=?,finished_at=?,rating=?
       WHERE id=? AND movie_id=?`).bind(season,start,finish,rating,entryId,movieId).run();
