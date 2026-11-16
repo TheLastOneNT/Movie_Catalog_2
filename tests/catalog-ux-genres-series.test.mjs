@@ -11,14 +11,23 @@ test("movie title can be cleared with one accessible button",()=>{
  assert.match(page,/update\("title",""\)/);
  assert.match(page,/setTmdbMatches\(\[\]\)/);
 });
-test("series date range reuses the native iOS month/year picker from movie dates",()=>{
+test("one period calendar selects start/end with direct month/year jumps",()=>{
  const calendar=page.slice(page.indexOf("function SeasonRangeCalendar("),page.indexOf("function SeasonTracker("));
- assert.match(calendar,/className="seasonNativeDateRange"/);
- assert.equal((calendar.match(/<ViewingDateField/g)||[]).length,2);
- assert.match(calendar,/value=\{start\}/);
- assert.match(calendar,/value=\{end\}/);
- assert.match(page,/<input type="date"/);
- assert.doesNotMatch(calendar,/changeMonth|seasonCalendarGrid/);
+ assert.match(calendar,/className="seasonRangeTrigger"/);
+ assert.match(calendar,/className="seasonCalendarGrid"/);
+ assert.match(calendar,/className="seasonCalendarJump"/);
+ assert.match(calendar,/aria-label=\{en\?"Month":"Месяц"\}/);
+ assert.match(calendar,/aria-label=\{en\?"Year":"Год"\}/);
+ assert.match(calendar,/setStage\("end"\)/);
+ assert.match(calendar,/onChange\(start,date\)/);
+ assert.doesNotMatch(calendar,/seasonNativeDateRange/);
+});
+test("unmatched TMDB records are explicitly visible and genre types normalized",()=>{
+ assert.match(worker,/async function listUnresolvedTmdbGenres/);
+ assert.match(page,/unresolvedGenres.map\(movie/);
+ assert.match(page,/nonGenreIds = new Set\(\[16, 99\]\)/);
+ assert.match(page,/genreLabels/);
+ assert.match(page,/cleanGenreLabel/);
 });
 test("watched series is supported with a real rated and dated season",()=>{
  const create=worker.slice(worker.indexOf("async function createMovie("),worker.indexOf("async function ensurePosterTable("));

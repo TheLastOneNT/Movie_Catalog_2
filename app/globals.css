@@ -823,3 +823,34 @@ img { display: block; max-width: 100%; }
 .seasonNativeActions { display:flex; justify-content:flex-end; }
 .seasonNativeActions button { min-height:35px; border:1px solid rgba(214,173,99,.3); background:rgba(214,173,99,.05); border-radius:5px; color:var(--gold-bright); cursor:pointer; padding:6px 10px; font-size:12px; }
 @media (max-width:420px) { .seasonNativeDateRange { grid-template-columns:1fr; } }
+
+
+/* Single season-period calendar: one popup, fast month/year jump, two date clicks. */
+.seasonCalendar { z-index:20; }
+.seasonCalendarJump { display:flex; gap:6px; align-items:center; justify-content:center; min-width:0; flex:1; }
+.seasonCalendarHead { gap:6px; }
+.seasonCalendarHead .seasonCalendarJump select {
+  width:auto; min-width:0; max-width:135px; height:38px; padding:0 6px;
+  border:1px solid #4c4034; border-radius:6px; background:#242025;
+  color:#f4e9d7; font-size:13px; text-transform:capitalize;
+}
+.seasonCalendarHead .seasonCalendarJump select:last-child { max-width:90px; }
+.seasonCalendarHead button:disabled { opacity:.25; cursor:not-allowed; }
+.seasonCalendarDay:disabled { opacity:.2; cursor:not-allowed; }
+@media(max-width:420px) {
+  .seasonCalendarHead .seasonCalendarJump select { max-width:103px; font-size:12px; }
+  .seasonCalendarHead .seasonCalendarJump select:last-child { max-width:76px; }
+  .seasonCalendarHead button { width:34px; }
+}
+
+
+.libraryUnresolvedGenres { margin-top:16px; padding:12px 0; border-top:1px solid rgba(214,173,99,.24); }
+.libraryUnresolvedGenres h4 { color:#f5e6c8; font-size:15px; margin:0 0 10px; }
+.libraryUnresolvedGenres ul { display:grid; gap:7px; list-style:none; padding:0; margin:0 0 12px; }
+.libraryUnresolvedGenres li { min-width:0; }
+.libraryUnresolvedGenres li button { width:100%; text-align:left; display:flex; flex-direction:column; gap:4px; min-height:48px;
+  border:1px solid rgba(214,173,99,.22); background:rgba(214,173,99,.05); padding:10px 12px;
+  border-radius:6px; color:#f1ede4; cursor:pointer; }
+.libraryUnresolvedGenres li button strong { font-size:13px; font-weight:600; }
+.libraryUnresolvedGenres li button span { font-size:12px; color:#a5a1a0; }
+.libraryUnresolvedGenres li button:hover { border-color:#d7b77d; }
