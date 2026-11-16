@@ -493,16 +493,19 @@ async function applyTmdbMatch(request, env, movieId) {
         ON CONFLICT(movie_id) DO UPDATE SET content_type=excluded.content_type,image=excluded.image,updated_at=CURRENT_TIMESTAMP`).bind(movieId,contentType,bytes),
       env.DB.prepare(`UPDATE movies SET title_en = COALESCE(?,title_en), description_en = COALESCE(?,description_en),
         description_ru = CASE WHEN description_ru IS NULL OR description_ru = '' THEN ? ELSE description_ru END,
-        release_year = COALESCE(release_year,?), poster_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        release_year = COALESCE(release_year,?), poster_path = ?,
+        tmdb_id=?, tmdb_media_type=?, genre_ids=?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
-          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,movieId),
+          optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,`/api/posters/${movieId}`,
+          input.tmdbId,input.mediaType,JSON.stringify(data.genreIds),movieId),
     ]);
   } else {
     await env.DB.prepare(`UPDATE movies SET title_en=COALESCE(?,title_en), description_en=COALESCE(?,description_en),
       description_ru=CASE WHEN description_ru IS NULL OR description_ru='' THEN ? ELSE description_ru END,
-      release_year=COALESCE(release_year,?),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      release_year=COALESCE(release_year,?),tmdb_id=?,tmdb_media_type=?,genre_ids=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .bind(optionalText(data.titleEn,"English title",160),optionalText(data.descriptionEn.slice(0,3000),"English description",3000),
-        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,movieId).run();
+        optionalText(data.description.slice(0,3000),"Russian description",3000),data.releaseYear,
+        input.tmdbId,input.mediaType,JSON.stringify(data.genreIds),movieId).run();
   }
   return json({ movie: await getCatalogMovie(env,movieId), posterReplaced: Boolean(data.posterUrl) });
 }
@@ -1091,7 +1094,7 @@ async function deleteViewingEvent(env, movieId, eventId) {
 }
 
 async function editMovie(request, env, movieId) {
-  const old = await env.DB.prepare("SELECT id FROM movies WHERE id = ?").bind(movieId).first();
+  const old = await env.DB.prepare("SELECT id,category,release_year FROM movies WHERE id = ?").bind(movieId).first();
   if (!old) return json({ error: "Movie not found." }, 404);
   const input = await readJson(request);
   const title = optionalText(input.title, "Title", 160);
@@ -1106,9 +1109,16 @@ async function editMovie(request, env, movieId) {
   if (existing) return json({error:"Another title with this name, category and release year already exists.", duplicateId:existing.id, duplicateTitle:existing.title},409);
   await env.DB.prepare(`
     UPDATE movies SET title_ru = ?, title_en = ?, category = ?,
-      description_ru = ?, description_en = ?, release_year = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      description_ru = ?, description_en = ?, release_year = ?,
+      tmdb_id = CASE WHEN ? THEN NULL ELSE tmdb_id END,
+      tmdb_media_type = CASE WHEN ? THEN NULL ELSE tmdb_media_type END,
+      genre_ids = CASE WHEN ? THEN '[]' ELSE genre_ids END,
+      updated_at = CURRENT_TIMESTAMP WHERE id = ?
   `).bind(title, titleEn, input.category,
-    optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year, movieId).run();
+    optionalText(input.description, "Description", 3000), optionalText(input.descriptionEn, "English description", 3000), year,
+    Number(old.category!==input.category || old.release_year!==year),
+    Number(old.category!==input.category || old.release_year!==year),
+    Number(old.category!==input.category || old.release_year!==year), movieId).run();
   return json({ movie: await getCatalogMovie(env, movieId) });
 }
 
