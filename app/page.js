@@ -7,6 +7,27 @@ import { randomizeMovies, sortOldestWatched } from "@/lib/catalog";
 import { findDuplicateTitle, findPotentialDuplicatePairs } from "@/lib/title-duplicates";
 
 const categoryIds = ["movies", "series", "cartoons", "documentaries"];
+// These are content categories in our top navigation, not useful genre filters.
+const nonGenreIds = new Set([16, 99]);
+// Consistent, editorially curated labels for TMDB movie and TV genre IDs.
+const genreLabels = {
+  12:["Приключения","Adventure"],14:["Фэнтези","Fantasy"],18:["Драма","Drama"],
+  27:["Ужасы","Horror"],28:["Боевик","Action"],35:["Комедия","Comedy"],
+  36:["История","History"],37:["Вестерн","Western"],53:["Триллер","Thriller"],
+  80:["Криминал","Crime"],878:["Фантастика","Science fiction"],
+  9648:["Детектив","Mystery"],10402:["Музыка","Music"],
+  10749:["Мелодрама","Romance"],10751:["Семейный","Family"],
+  10752:["Военный","War"],10759:["Боевик и приключения","Action & adventure"],
+  10762:["Для детей","Kids"],10763:["Новости","News"],
+  10764:["Реалити-шоу","Reality"],10765:["Фантастика и фэнтези","Sci-fi & fantasy"],
+  10766:["Мыльная опера","Soap"],10767:["Ток-шоу","Talk show"],
+  10768:["Военный и политический","War & politics"],10770:["Телефильм","TV movie"]
+};
+const cleanGenreLabel=(value)=>{
+  const label=String(value||"").trim().replace(/\\s+/g," ");
+  return label ? label[0].toLocaleUpperCase()+label.slice(1) : "";
+};
+
 
 const statusOrder = ["watched"];
 
