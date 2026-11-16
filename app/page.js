@@ -420,69 +420,28 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
 // selected start is a valid, unfinished viewing period.
 function SeasonRangeCalendar({start, end, onChange, language}) {
   const en=language==="en";
-  const [open,setOpen]=useState(false);
-  const [month,setMonth]=useState(()=> (start||todayLocal()).slice(0,7));
-  const [choosingEnd,setChoosingEnd]=useState(Boolean(start&&!end));
-  const locale=en?"en-US":"ru-RU";
-  const asDate=(value)=>new Date(`${value}T12:00:00Z`);
-  const pretty=(value)=>value?new Intl.DateTimeFormat(locale,{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(asDate(value)):"—";
-  const year=Number(month.slice(0,4)),index=Number(month.slice(5,7))-1;
-  const startWeek=(new Date(Date.UTC(year,index,1)).getUTCDay()+6)%7;
-  const daysInMonth=new Date(Date.UTC(year,index+1,0)).getUTCDate();
-  const allDays=Array.from({length:Math.ceil((startWeek+daysInMonth)/7)*7},(_,i)=>{
-    const day=i-startWeek+1;
-    return day>=1&&day<=daysInMonth?day:null;
-  });
-  const iso=(day)=>`${year}-${String(index+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-  const changeMonth=(offset)=>{
-    const date=new Date(Date.UTC(year,index+offset,1));
-    setMonth(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);
-  };
-  const choose=(day)=>{
-    const date=iso(day);
-    if(!choosingEnd||!start||date<start){
-      onChange(date,"");setChoosingEnd(true);
-    }else{
-      onChange(start,date);setChoosingEnd(false);setOpen(false);
-    }
-  };
-  const toggle=()=>{
-    if(!open){setMonth((start||todayLocal()).slice(0,7));setChoosingEnd(Boolean(start&&!end));}
-    setOpen(value=>!value);
-  };
-  const weekdays=en?["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
-  const monthTitle=new Intl.DateTimeFormat(locale,{month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(year,index,1)));
+  const max=todayLocal();
   return <div className="seasonRangeField">
     <span className="seasonFieldCaption">{en?"Viewing period":"Период просмотра"}</span>
-    <button type="button" className="seasonRangeTrigger" onClick={toggle} aria-expanded={open} aria-label={en?"Choose viewing period":"Выбрать период просмотра"}>
-      <Icon name="calendar" size={18}/><span className="seasonRangeText">{pretty(start)} <span className="seasonRangeSeparator">→</span> {end?pretty(end):(en?"Watching":"Смотрим")}</span>
-    </button>
-    {open&&<div className="seasonCalendar" role="group" aria-label={en?"Viewing dates":"Даты просмотра"}>
-      <div className="seasonCalendarHead">
-        <button type="button" onClick={()=>changeMonth(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
-        <div className="seasonCalendarJump">
-          <select aria-label={en?"Month":"Месяц"} value={index} onChange={event=>setMonth(`${year}-${String(Number(event.target.value)+1).padStart(2,"0")}`)}>
-            {Array.from({length:12},(_,m)=><option key={m} value={m}>{new Intl.DateTimeFormat(locale,{month:"long",timeZone:"UTC"}).format(new Date(Date.UTC(2020,m,1)))}</option>)}
-          </select>
-          <select aria-label={en?"Year":"Год"} value={year} onChange={event=>setMonth(`${event.target.value}-${String(index+1).padStart(2,"0")}`)}>
-            {Array.from({length:new Date().getFullYear()-1887},(_,y)=>new Date().getFullYear()-y).map(y=><option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <button type="button" onClick={()=>changeMonth(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
-      </div>
-      <p className="seasonCalendarHint">{choosingEnd&&start?(en?"Choose the end date, or leave the season in progress":"Выберите дату завершения или оставьте сезон незавершённым"):(en?"Choose the start date":"Выберите дату начала")}</p>
-      <div className="seasonCalendarGrid">
-        {weekdays.map(day=><span className="seasonCalendarWeekday" key={day}>{day}</span>)}
-        {allDays.map((day,position)=>day?<button key={position} type="button"
-          className={["seasonCalendarDay",iso(day)===start?"start":"",iso(day)===end?"end":"",start&&end&&iso(day)>start&&iso(day)<end?"inside":""].filter(Boolean).join(" ")}
-          aria-pressed={iso(day)===start||iso(day)===end} onClick={()=>choose(day)}>{day}</button>:<span key={position}/>)}
-      </div>
-      <div className="seasonCalendarActions">
-        <button type="button" onClick={()=>{onChange(start||todayLocal(),"");setChoosingEnd(true);setOpen(false);}}>{en?"Still watching":"Ещё смотрим"}</button>
-        <button type="button" onClick={()=>{onChange(todayLocal(),"");setMonth(todayLocal().slice(0,7));setChoosingEnd(true);}}>{en?"Start today":"Начать сегодня"}</button>
-        <button type="button" onClick={()=>setOpen(false)}>{en?"Close":"Закрыть"}</button>
-      </div>
-    </div>}
+    <div className="seasonNativeDateRange">
+      <label>
+        <span>{en?"Started":"Начали смотреть"}</span>
+        <ViewingDateField value={start} max={max} language={language}
+          label={en?"Season start date":"Дата начала просмотра"}
+          onChange={value=>onChange(value,"")} />
+      </label>
+      <label>
+        <span>{en?"Finished":"Закончили смотреть"}</span>
+        <ViewingDateField value={end} max={max} disabled={!start} language={language}
+          label={en?"Season finish date":"Дата окончания просмотра"}
+          onChange={value=>onChange(start,value&&value<start?start:value)} />
+      </label>
+    </div>
+    <div className="seasonNativeActions">
+      <button type="button" onClick={()=>onChange(start||todayLocal(),"")}>
+        {en?"Still watching / no end date":"Ещё смотрим / без даты окончания"}
+      </button>
+    </div>
   </div>;
 }
 
