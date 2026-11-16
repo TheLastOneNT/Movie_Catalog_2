@@ -12,7 +12,7 @@ test("TMDB search uses release year for films and original air year for series",
 });
 test("TMDB IDs can recover an ambiguous short-titled film",()=>{
  assert.match(worker,/directId = query\.match/);
- assert.match(worker,/tmdbDetails\(env, "movie", id\)/);
+ assert.match(worker,/Promise\.allSettled\(types\.map\(type=>tmdbDetails\(env,type,id\)\)\)/);
 });
 test("missing original posters use locally stored multilingual-safe placeholder",()=>{
  assert.match(worker,/posterFromTmdb \|\| "\/poster-placeholder\.svg"/);

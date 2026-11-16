@@ -329,15 +329,24 @@ async function searchTmdb(url, env) {
   if (yearText && (!Number.isInteger(year) || year < 1888 || year > 2200)) throw new ValidationError("Invalid search year.");
   if (query.length < 2 || query.length > 100) throw new ValidationError("Search must be 2–100 characters.");
 
-  // A direct TMDB ID disambiguates very short titles, e.g. Home (2009) = tmdb:62320.
-  const directId = query.match(/^tmdb:(\d{1,9})$/i);
+  // Numeric TMDB IDs are NOT globally unique across movie and TV namespaces.
+  // Query both unless the user supplies an explicit type (tmdb:tv:64480).
+  const directId = query.match(/^tmdb:(?:(tv|movie):)?(\d{1,9})$/i);
   if (directId) {
-    const id = Number(directId[1]);
-    const data = await tmdbDetails(env, "movie", id);
-    return json({ results: [{
-      id, category: data.genreIds.includes(16) ? "cartoons" : data.genreIds.includes(99) ? "documentaries" : "movies",
-      ...data,
-    }] });
+    const id = Number(directId[2]);
+    const types = directId[1] ? [directId[1].toLowerCase()] : ["movie", "tv"];
+    const settled = await Promise.allSettled(types.map(type=>tmdbDetails(env,type,id)));
+    const results = settled.flatMap((item,index)=>{
+      if(item.status!=="fulfilled")return [];
+      const data=item.value;
+      return [{
+        id, category:types[index]==="tv"?"series":
+          data.genreIds.includes(16)?"cartoons":data.genreIds.includes(99)?"documentaries":"movies",
+        ...data,
+      }];
+    });
+    if(!results.length)return json({results:[]});
+    return json({results});
   }
 
   // Search the two media types separately so that movies are not crowded out by
