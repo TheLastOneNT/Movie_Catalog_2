@@ -396,6 +396,13 @@ async function listTmdbGenres(env) {
   return json({genres:[...merged.values()]});
 }
 
+async function listUnresolvedTmdbGenres(env) {
+  const result=await env.DB.prepare(`SELECT id,title_ru AS title,title_en AS titleEn,
+    release_year AS releaseYear,category
+    FROM movies WHERE tmdb_id IS NULL ORDER BY collection_order`).all();
+  return json({movies:result.results || []});
+}
+
 async function backfillTmdbGenres(request, env) {
   if (!env.TMDB_READ_TOKEN) return json({error:"TMDB is not configured."},503);
   const data=await readJson(request);
@@ -1277,6 +1284,7 @@ async function handleApi(request, env) {
     return dismissCatalogAlert(request,env);
   if (url.pathname === "/api/tmdb/search" && request.method === "GET") return searchTmdb(url, env);
   if (url.pathname === "/api/tmdb/genres" && request.method === "GET") return listTmdbGenres(env);
+  if (url.pathname === "/api/tmdb/genres/unresolved" && request.method === "GET") return listUnresolvedTmdbGenres(env);
   if (url.pathname === "/api/tmdb/genres/backfill" && request.method === "POST") return backfillTmdbGenres(request, env);
   if (url.pathname === "/api/tmdb/suggestions" && request.method === "GET") return tmdbSuggestions(url, env);
   const tmdbApply = url.pathname.match(/^\/api\/movies\/(\d+)\/tmdb$/);
