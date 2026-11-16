@@ -321,7 +321,10 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
           <div className="addMovieFields">
             <label className="wideField">
               <span>{labels.addMovie.name}</span>
-              <input required maxLength={160} value={form.title} onChange={(event) => update("title", event.target.value)} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+              <span className="addTitleInput">
+                <input required maxLength={160} value={form.title} onChange={(event) => {update("title", event.target.value);setTmdbMatches([]);setTmdbError("");}} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+                {form.title && <button type="button" aria-label={labels.locale==="en-US"?"Clear movie search":"Очистить название"} title={labels.locale==="en-US"?"Clear":"Очистить"} onClick={()=>{update("title","");setTmdbMatches([]);setTmdbPoster(null);setTmdbError("");}}><Icon name="close" size={17}/></button>}
+              </span>
             </label>
             {!initialMovie && <div className="tmdbSearch wideField">
               <small className="tmdbSearchHint">{labels.locale === "en-US" ? "Optional year narrows results. If nothing is found, try the original title or tmdb:62320 (TMDB ID)." : "Укажи год выпуска для точного поиска. Можно искать по оригинальному названию или по ID, например tmdb:62320."}</small>
@@ -436,7 +439,14 @@ function SeasonRangeCalendar({start, end, onChange, language}) {
     {open&&<div className="seasonCalendar" role="group" aria-label={en?"Viewing dates":"Даты просмотра"}>
       <div className="seasonCalendarHead">
         <button type="button" onClick={()=>changeMonth(-1)} aria-label={en?"Previous month":"Предыдущий месяц"}>‹</button>
-        <strong>{monthTitle}</strong>
+        <div className="seasonCalendarJump">
+          <select aria-label={en?"Month":"Месяц"} value={index} onChange={event=>setMonth(`${year}-${String(Number(event.target.value)+1).padStart(2,"0")}`)}>
+            {Array.from({length:12},(_,m)=><option key={m} value={m}>{new Intl.DateTimeFormat(locale,{month:"long",timeZone:"UTC"}).format(new Date(Date.UTC(2020,m,1)))}</option>)}
+          </select>
+          <select aria-label={en?"Year":"Год"} value={year} onChange={event=>setMonth(`${event.target.value}-${String(index+1).padStart(2,"0")}`)}>
+            {Array.from({length:new Date().getFullYear()-1887},(_,y)=>new Date().getFullYear()-y).map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
         <button type="button" onClick={()=>changeMonth(1)} aria-label={en?"Next month":"Следующий месяц"}>›</button>
       </div>
       <p className="seasonCalendarHint">{choosingEnd&&start?(en?"Choose the end date, or leave the season in progress":"Выберите дату завершения или оставьте сезон незавершённым"):(en?"Choose the start date":"Выберите дату начала")}</p>
@@ -650,6 +660,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("random");
+  const [sortDirection, setSortDirection] = useState("desc");
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [view, setView] = useState("grid");
   const [selectedId, setSelectedId] = useState(null);
@@ -1191,10 +1202,23 @@ export default function Home() {
     });
 
     if (sort === "random") result = randomizeMovies(result, shuffleSeed);
-    if (sort === "rating") result = [...result].sort((a, b) => (b.progress.rating || 0) - (a.progress.rating || 0));
-    if (sort === "oldest") result = sortOldestWatched(result);
+    if (sort === "rating" || sort === "year") {
+      const key=sort==="rating"?"rating":"releaseYear";
+      result = [...result].sort((a,b)=>{
+        const left=sort==="rating"?a.progress.rating:a.releaseYear;
+        const right=sort==="rating"?b.progress.rating:b.releaseYear;
+        if(left==null&&right==null)return a.collectionOrder-b.collectionOrder;
+        if(left==null)return 1;
+        if(right==null)return -1;
+        return (Number(left)-Number(right))*(sortDirection==="asc"?1:-1) || a.collectionOrder-b.collectionOrder;
+      });
+    }
+    if (sort === "oldest") {
+      result = sortOldestWatched(result);
+      if (sortDirection === "asc") result.reverse();
+    }
     return result;
-  }, [category, movies, query, shuffleSeed, sort, status, t.locale]);
+  }, [category, movies, query, shuffleSeed, sort, sortDirection, status, t.locale]);
 
   const watchedCount = movies.filter((movie) => movie.progress.status === "watched").length;
   const watchlistCount = movies.filter((movie) => personalFor(movie, activeMember).wantsToWatch).length;
@@ -1338,11 +1362,17 @@ export default function Home() {
             {statusOrder.map((item) => <option key={item} value={item}>{t.catalog[item]}</option>)}
             <option value="watchlist">{t.family.watchlist}</option>
           </select>
-          <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t.catalog.collectionOrder}>
+          <select value={sort} onChange={(event) => {setSort(event.target.value);setSortDirection("desc");}} aria-label={t.catalog.collectionOrder}>
             <option value="random">{language === "en" ? "Default order" : "Обычный порядок"}</option>
-            <option value="rating">{language === "en" ? "Highest rated" : "Сначала лучшие"}</option>
-            <option value="oldest">{language === "en" ? "Longest since watched" : "Давно не смотрели"}</option>
+            <option value="rating">{language === "en" ? "By rating" : "По оценке"}</option>
+            <option value="year">{language === "en" ? "By release year" : "По году выпуска"}</option>
+            <option value="oldest">{language === "en" ? "Time since watched" : "Давно не смотрели"}</option>
           </select>
+          {sort!=="random"&&<button type="button" className="sortDirectionToggle" onClick={()=>setSortDirection(current=>current==="desc"?"asc":"desc")}
+            aria-label={language==="en"?(sortDirection==="desc"?"Reverse order (ascending)":"Reverse order (descending)"):(sortDirection==="desc"?"Изменить порядок: по возрастанию":"Изменить порядок: по убыванию")}
+            title={language==="en"?(sortDirection==="desc"?"Descending — tap to reverse":"Ascending — tap to reverse"):(sortDirection==="desc"?"По убыванию — нажмите для смены":"По возрастанию — нажмите для смены")}>
+            {sortDirection==="desc"?"↓":"↑"}
+          </button>}
           <div className="viewSwitch" aria-label={t.nav.collection}>
             <button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")} aria-label="Grid"><Icon name="grid" size={18} /></button>
             <button type="button" className={view === "list" ? "active" : ""} onClick={() => setView("list")} aria-label="List"><Icon name="list" size={18} /></button>
