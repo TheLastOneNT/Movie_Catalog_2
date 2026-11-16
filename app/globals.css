@@ -813,3 +813,13 @@ img { display: block; max-width: 100%; }
   .toolbar .viewSwitch { grid-column:1; }
   .toolbar .resultCount { grid-column:2; }
 }
+
+
+/* Shared native date interaction: movies and series use the same iOS picker. */
+.seasonNativeDateRange { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:9px 0 8px; }
+.seasonNativeDateRange > label { display:grid; gap:7px; min-width:0; }
+.seasonNativeDateRange > label > span:first-child { color:#cfc9c2; font-size:12px; }
+.seasonNativeDateRange .viewingDateField { min-width:0; }
+.seasonNativeActions { display:flex; justify-content:flex-end; }
+.seasonNativeActions button { min-height:35px; border:1px solid rgba(214,173,99,.3); background:rgba(214,173,99,.05); border-radius:5px; color:var(--gold-bright); cursor:pointer; padding:6px 10px; font-size:12px; }
+@media (max-width:420px) { .seasonNativeDateRange { grid-template-columns:1fr; } }
