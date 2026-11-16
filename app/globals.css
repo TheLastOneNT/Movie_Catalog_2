@@ -868,3 +868,7 @@ img { display: block; max-width: 100%; }
   .toolbar .resultCount { grid-column:3; grid-row:auto; justify-self:end; text-align:right; margin:0; }
   .toolbar > select { grid-column:1 / -1; }
 }
+
+@media (max-width:680px) {
+  .toolbar .viewSwitch, .toolbar .sortDirectionToggle, .toolbar .resultCount { grid-row:5; }
+}
