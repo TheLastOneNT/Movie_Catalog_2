@@ -251,6 +251,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
   const [tmdbMatches, setTmdbMatches] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [tmdbPoster, setTmdbPoster] = useState(null);
+  const [tmdbIdentity, setTmdbIdentity] = useState(null);
   const [tmdbError, setTmdbError] = useState("");
   const searchOnTmdb = async () => {
     if (form.title.trim().length < 2) return;
@@ -271,7 +272,9 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
       titleEn: match.titleEn || "", description: match.description || "", descriptionEn: match.descriptionEn || "",
       releaseYear: match.releaseYear || "", category: match.category || current.category,
       ...(match.category==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}) }));
-    setTmdbPoster(match.posterUrl || null); setTmdbMatches([]);
+    setTmdbPoster(match.posterUrl || null);
+    setTmdbIdentity({id:match.tmdbId || match.id,mediaType:match.mediaType || (match.category==="series"?"tv":"movie")});
+    setTmdbMatches([]);
   };
   const [preview, setPreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -287,13 +290,15 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     return () => URL.revokeObjectURL(url);
   }, [poster]);
 
-  const update = (field,value)=>setForm(current=>({...current,[field]:value,
+  const update = (field,value)=>{
+    if (["titleEn","category","releaseYear"].includes(field)) setTmdbIdentity(null);
+    setForm(current=>({...current,[field]:value,
     ...(field==="category"&&value==="series"&&current.status!=="watched"?{status:"watchlist",wantToWatch:true,rating:null,lastWatchedAt:""}:{}),
     ...(field==="status"?{wantToWatch:value==="watchlist",
       rating:value==="watched"?current.rating:null,
       lastWatchedAt:value==="watched"?(current.lastWatchedAt||todayLocal()):"",
       startedAt:value==="watched"?(current.startedAt||todayLocal()):""}:{}),
-  }));
+  }));};
   const submit = async (event) => {
     event.preventDefault();
     if(!form.title.trim()){setError(labels.locale==="en-US"?"Enter a title.":"Укажите название.");return;}
@@ -304,7 +309,7 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
     setSubmitting(true);
     setError("");
     try {
-      await onCreate(form, poster, tmdbPoster);
+      await onCreate(form, poster, tmdbPoster, tmdbIdentity);
     } catch (submitError) {
       setError(submitError.message || labels.addMovie.error);
       setSubmitting(false);
@@ -325,8 +330,8 @@ function AddMovieModal({ labels, onClose, onCreate, initialMovie = null }) {
             <label className="wideField">
               <span>{labels.addMovie.name}</span>
               <span className="addTitleInput">
-                <input required maxLength={160} value={form.title} onChange={(event) => {update("title", event.target.value);setTmdbMatches([]);setTmdbError("");}} placeholder={labels.addMovie.namePlaceholder} autoFocus />
-                {form.title && <button type="button" aria-label={labels.locale==="en-US"?"Clear movie search":"Очистить название"} title={labels.locale==="en-US"?"Clear":"Очистить"} onClick={()=>{update("title","");setTmdbMatches([]);setTmdbPoster(null);setTmdbError("");}}><Icon name="close" size={17}/></button>}
+                <input required maxLength={160} value={form.title} onChange={(event) => {update("title", event.target.value);setTmdbIdentity(null);setTmdbMatches([]);setTmdbError("");}} placeholder={labels.addMovie.namePlaceholder} autoFocus />
+                {form.title && <button type="button" aria-label={labels.locale==="en-US"?"Clear movie search":"Очистить название"} title={labels.locale==="en-US"?"Clear":"Очистить"} onClick={()=>{update("title","");setTmdbIdentity(null);setTmdbMatches([]);setTmdbPoster(null);setTmdbError("");}}><Icon name="close" size={17}/></button>}
               </span>
             </label>
             {!initialMovie && <div className="tmdbSearch wideField">
@@ -1139,7 +1144,7 @@ export default function Home() {
     requireAccess(() => setAddMovieOpen(true));
   };
 
-  const createMovie = async (form, posterFile, tmdbPoster) => {
+  const createMovie = async (form, posterFile, tmdbPoster, tmdbIdentity) => {
     const duplicate = findDuplicateTitle(movies, form);
     if (duplicate) {
       throw new Error(language === "en"
@@ -1161,6 +1166,8 @@ export default function Home() {
         seasonNumber: form.category==="series" && form.status==="watched" ? Number(form.seasonNumber) : null,
         status: form.status === "watched" ? "watched" : "unwatched",
         wantToWatch: form.status === "watchlist",
+        tmdbId:tmdbIdentity?.id ?? null,
+        tmdbMediaType:tmdbIdentity?.mediaType ?? null,
       }),
     });
     const data = await response.json();
