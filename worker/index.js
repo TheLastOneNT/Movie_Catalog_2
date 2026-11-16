@@ -380,6 +380,62 @@ async function searchTmdb(url, env) {
   return json({ results });
 }
 
+async function listTmdbGenres(env) {
+  if (!env.TMDB_READ_TOKEN) return json({genres:[]},503);
+  const [ruMovie,ruTv,enMovie,enTv] = await Promise.all([
+    tmdbGet(env,"genre/movie/list",{language:"ru-RU"}),tmdbGet(env,"genre/tv/list",{language:"ru-RU"}),
+    tmdbGet(env,"genre/movie/list",{language:"en-US"}),tmdbGet(env,"genre/tv/list",{language:"en-US"}),
+  ]);
+  const merged=new Map();
+  for (const genre of [...(enMovie.genres||[]),...(enTv.genres||[])]) merged.set(genre.id,{id:genre.id,en:genre.name,ru:genre.name});
+  for (const genre of [...(ruMovie.genres||[]),...(ruTv.genres||[])]) {
+    const existing=merged.get(genre.id);
+    if(existing) existing.ru=genre.name;
+    else merged.set(genre.id,{id:genre.id,en:genre.name,ru:genre.name});
+  }
+  return json({genres:[...merged.values()]});
+}
+
+async function backfillTmdbGenres(request, env) {
+  if (!env.TMDB_READ_TOKEN) return json({error:"TMDB is not configured."},503);
+  const data=await readJson(request);
+  const cursor=data.cursor == null ? 0 : Number(data.cursor);
+  if (!Number.isSafeInteger(cursor) || cursor < 0) throw new ValidationError("Invalid backfill cursor.");
+  const rows=await env.DB.prepare(`SELECT id,category,title_ru,title_en,release_year
+    FROM movies WHERE id>? AND tmdb_id IS NULL ORDER BY id LIMIT 5`).bind(cursor).all();
+  const unresolved=[];
+  let updated=0;
+  for(const movie of rows.results||[]) {
+    try {
+      const media=tmdbMediaType(movie.category);
+      const primary=movie.title_ru || movie.title_en;
+      const result=await tmdbGet(env,`search/${media}`,{query:primary,language:"ru-RU",include_adult:"false",
+        ...(movie.release_year ? media==="tv"?{first_air_date_year:movie.release_year}:{year:movie.release_year}:{})});
+      const normalized=[movie.title_ru,movie.title_en].map(normalizeTitle).filter(Boolean);
+      const viable=(result.results||[]).filter(candidate=>{
+        const title=normalizeTitle(candidate.title||candidate.name);
+        const original=normalizeTitle(candidate.original_title||candidate.original_name);
+        const year=Number((candidate.release_date||candidate.first_air_date||"").slice(0,4))||null;
+        return (normalized.includes(title)||normalized.includes(original))
+          && (movie.release_year == null || year===movie.release_year);
+      });
+      if(viable.length!==1){unresolved.push(movie.id);continue;}
+      const details=await tmdbDetails(env,media,viable[0].id);
+      if(movie.release_year!=null && details.releaseYear!==movie.release_year){unresolved.push(movie.id);continue;}
+      const ids=details.genreIds.filter(n=>Number.isSafeInteger(n));
+      await env.DB.prepare(`UPDATE movies SET tmdb_id=?,tmdb_media_type=?,genre_ids=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND tmdb_id IS NULL`).bind(viable[0].id,media,JSON.stringify(ids),movie.id).run();
+      updated++;
+    } catch (err) {
+      console.warn("TMDB genre sync skipped record",movie.id,err?.message);
+      unresolved.push(movie.id);
+    }
+  }
+  const nextCursor=rows.results?.length?rows.results.at(-1).id:cursor;
+  const hasMore=await env.DB.prepare("SELECT id FROM movies WHERE id>? AND tmdb_id IS NULL LIMIT 1").bind(nextCursor).first();
+  return json({updated,unresolved,nextCursor,done:!hasMore});
+}
+
 async function tmdbSuggestions(url, env) {
   if (!env.TMDB_READ_TOKEN) return json({ error: "TMDB is not configured." }, 503);
   const offset = Number(url.searchParams.get("offset") || 0);
